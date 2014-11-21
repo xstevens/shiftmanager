@@ -106,7 +106,12 @@ def random_password(length=64):
     invalid_chars = r'''\/'"@ '''
     valid_chars_set = set(string.digits + string.letters + string.punctuation) - set(invalid_chars)
     valid_chars = list(valid_chars_set)
-    return ''.join([ rand.choice(valid_chars) for i in xrange(length) ])
+    chars = [rand.choice(string.ascii_uppercase),
+             rand.choice(string.ascii_lowercase),
+             rand.choice(string.digits)]
+    chars += [rand.choice(valid_chars) for x in xrange(length - 3)]
+    rand.shuffle(chars)
+    return ''.join(chars)
 
 def create_user(host, username, password):
 
