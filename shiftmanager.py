@@ -88,7 +88,7 @@ S3_UPLOADER_FINGERPRINTS = [
     "C066921AF167318A937C104DBD221018E2BD32EF", # mehlert
     "BF7F08BCCB9A9427094E32876DBA10920728A5D5", # steven
 ]
-
+    
 def random_password(length=64):
     """
     Return a strong and valid password for Redshift.
@@ -102,17 +102,16 @@ def random_password(length=64):
      - See http://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html
 
     """
-
+    rand = random.SystemRandom()
     invalid_chars = r'''\/'"@ '''
     valid_chars_set = set(string.digits + string.letters + string.punctuation) - set(invalid_chars)
     valid_chars = list(valid_chars_set)
-    chars = [random.choice(string.ascii_uppercase),
-             random.choice(string.ascii_lowercase),
-             random.choice(string.digits)]
-    chars += [random.choice(valid_chars) for x in xrange(length - 3)]
-    random.shuffle(chars)
+    chars = [rand.choice(string.ascii_uppercase),
+             rand.choice(string.ascii_lowercase),
+             rand.choice(string.digits)]
+    chars += [rand.choice(valid_chars) for x in xrange(length - 3)]
+    rand.shuffle(chars)
     return ''.join(chars)
-
 
 def create_user(host, username, password):
 

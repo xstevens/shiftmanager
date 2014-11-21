@@ -10,6 +10,7 @@ It's assumed that you've installed GPG and imported public keys from [knox](http
 
 This package depends on several external python libraries:
 ```
+pip install --upgrade gdata
 pip install --upgrade google-api-python-client
 pip install --upgrade python-gnupg
 pip install --upgrade psycopg2
