@@ -6,7 +6,7 @@ Tool for creating Redshift users, distributing credentials, etc.
 
 ## Installation
 
-It's assumed that you've installed GPG and imported public keys from [knox](https://github.banksimple.com/ops/knox). It's also assumed that you have a
+It's assumed that you've installed GPG and imported public keys from [knox](https://github.banksimple.com/ops/knox). It's also assumed that you have you have superuser access to the dev and prod Redshift clusters.
 
 This package depends on several external python libraries:
 ```
@@ -19,7 +19,7 @@ pip install --upgrade psycopg2
 
 We distribute Redshift credentials to new users via a document on Google Drive.
 
-Fire up your favorite Python interpreter (`ipython` recommended), but make sure you have environment variables PGUSER and PGPASSWORD set for the process:
+Fire up your favorite Python interpreter (`ipython` recommended), but make sure you have environment variables PGUSER and PGPASSWORD set for the process, probably via `chpst` or [`envcrypt`](https://github.banksimple.com/analytics/sup/blob/master/dev-setup.md#credentials). Your session will look something like:
 ```python
 >>> redshift_username = 'newuser'
 >>> gdrive_username = 'newuser' # as in newuser@simple.com
@@ -32,7 +32,7 @@ Fire up your favorite Python interpreter (`ipython` recommended), but make sure 
 Successfully created creds for user 'klukas' and sent a notification email.
 ```
 
-Let the user know that creds are in the mail, and you're done. The doc will get dumped in the top-level folder of your Google Drive account, but you can feel free to move it into a subdirectory.
+Tell the user that their creds are in the mail, and you're done. The doc will get dumped in the top-level folder of your Google Drive account, but feel free to move it into a subdirectory.
 
 The first time you run `post_user_creds_to_gdrive`, a browser window should open for an authorization workflow. Choose your `@simple.com` Google user account and accept the permissions for the "Secure Cred Distribution" app. The result gets cached as `access_token.json` with an expiration date a few months in the future.
 
