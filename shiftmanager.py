@@ -88,7 +88,8 @@ S3_UPLOADER_FINGERPRINTS = [
     "C066921AF167318A937C104DBD221018E2BD32EF", # mehlert
     "BF7F08BCCB9A9427094E32876DBA10920728A5D5", # steven
 ]
-    
+
+
 def random_password(length=64):
     """
     Return a strong and valid password for Redshift.
@@ -113,7 +114,11 @@ def random_password(length=64):
     rand.shuffle(chars)
     return ''.join(chars)
 
+
 def create_user(host, username, password):
+    """
+    Create a new user account.
+    """
 
     try:
        conn = psycopg2.connect(
@@ -136,7 +141,14 @@ def create_user(host, username, password):
 
     conn.commit()
 
+
 def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
+    """
+    Uploads a text file to Google Drive, shared with *gdriv_username*.
+
+    The text is taken from a template, with usernames and passwords inserted
+    as appropriate.
+    """
 
     email = '{0}@simple.com'.format(gdrive_username)
 
@@ -146,6 +158,8 @@ def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
 
     storage = Storage(STORAGE_FILENAME)
 
+    # Yeah, this isn't a command-line app, but this argparse flow was
+    # the easiest method available.
     parser = argparse.ArgumentParser(parents=[tools.argparser])
     flags = parser.parse_args()
 
@@ -197,6 +211,10 @@ def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
 
 
 def encrypted_for_s3_uploaders(text):
+    """
+    Returns *text* encrypted with the public keys of folks known
+    to have S3 upload privileges.
+    """
 
     gpg = gnupg.GPG()
 
@@ -212,5 +230,10 @@ def encrypted_for_s3_uploaders(text):
 
     return str(encrypted_data)
 
+
 def text_for_service_cred_upload_request(service_name, devpass, prodpass):
+    """
+    Returns a string containing a request to security folks to upload
+    passwords to appropriate locations in S3.
+    """
     return SERVICE_S3_UPLOAD_REQUEST_TEMPLATE.format(**locals())
