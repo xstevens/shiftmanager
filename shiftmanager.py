@@ -102,16 +102,11 @@ def random_password(length=64):
      - See http://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html
 
     """
-
+    rand = random.SystemRandom()
     invalid_chars = r'''\/'"@ '''
     valid_chars_set = set(string.digits + string.letters + string.punctuation) - set(invalid_chars)
     valid_chars = list(valid_chars_set)
-    chars = [random.choice(string.ascii_uppercase),
-             random.choice(string.ascii_lowercase),
-             random.choice(string.digits)]
-    chars += [random.choice(valid_chars) for x in xrange(length - 3)]
-    random.shuffle(chars)
-    return ''.join(chars)
+    return ''.join(rand.sample(valid_chars, length))
 
 
 def create_user(host, username, password):
