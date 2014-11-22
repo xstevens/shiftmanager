@@ -8,12 +8,16 @@ Tool for creating Redshift users, distributing credentials, etc.
 
 It's assumed that you've installed GPG and imported public keys from [knox](https://github.banksimple.com/ops/knox). It's also assumed that you have you have superuser access to the dev and prod Redshift clusters.
 
-This package depends on several external python libraries:
+To install this package, you must first install PostgreSQL's development libraries:
+
 ```
-pip install --upgrade gdata
-pip install --upgrade google-api-python-client
-pip install --upgrade python-gnupg
-pip install --upgrade psycopg2
+brew install postgresql
+```
+
+Then:
+
+```
+make install
 ```
 
 ## Creating a User Account
