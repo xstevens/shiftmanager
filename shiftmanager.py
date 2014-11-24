@@ -14,7 +14,6 @@ import apiclient.errors
 import psycopg2
 import gnupg
 
-import os
 import string
 import random
 from tempfile import NamedTemporaryFile
@@ -88,6 +87,7 @@ def _get_host(host):
     if host in DB_HOSTS:
         return DB_HOSTS[host]
     return host
+
 
 def random_password(length=64):
     """
