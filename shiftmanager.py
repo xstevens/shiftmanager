@@ -128,8 +128,7 @@ def create_user(host, username, password):
     conn = psycopg2.connect(
         host=host,
         database='analytics',
-        user=os.environ["PGUSER"],
-        password=os.environ["PGPASSWORD"],
+        port=5439,
     )
 
     cur = conn.cursor()
@@ -153,8 +152,7 @@ def set_password(host, username, password):
     conn = psycopg2.connect(
         host=host,
         database='analytics',
-        user=os.environ["PGUSER"],
-        password=os.environ["PGPASSWORD"],
+        port=5439,
     )
 
     cur = conn.cursor()
