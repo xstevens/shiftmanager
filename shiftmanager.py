@@ -134,10 +134,10 @@ def create_user(host, username, password):
     cur = conn.cursor()
 
     cur.execute("""
-    CREATE USER {username}
-    PASSWORD '{password}'
+    CREATE USER {0}
+    PASSWORD '{1}'
     IN GROUP analyticsusers;
-    """.format(**locals()))
+    """.format(username, password))
 
     conn.commit()
 
@@ -158,9 +158,9 @@ def set_password(host, username, password):
     cur = conn.cursor()
 
     cur.execute("""
-    ALTER USER {username}
-    PASSWORD '{password}';
-    """.format(**locals()))
+    ALTER USER {0}
+    PASSWORD '{1}';
+    """.format(username, password))
 
     conn.commit()
 
