@@ -167,7 +167,7 @@ def set_password(host, username, password):
 
 def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
     """
-    Uploads a text file to Google Drive, shared with *gdriv_username*.
+    Uploads a text file to Google Drive, shared with *gdrive_username*.
 
     The text is taken from a template, with usernames and passwords inserted
     as appropriate.
