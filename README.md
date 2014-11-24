@@ -20,7 +20,7 @@ Then:
 make install
 ```
 
-## Creating a User Account
+## Creating a User Account or Resetting a Password
 
 We distribute Redshift credentials to new users via a document on Google Drive.
 
@@ -32,8 +32,8 @@ Fire up your favorite Python interpreter (`ipython` recommended), but make sure 
 >>> import shiftmanager as manage
 >>> password = manage.random_password()
 
->>> manage.create_user(manage.DB_HOSTS['dev' ], redshift_username, password)
->>> manage.create_user(manage.DB_HOSTS['prod'], redshift_username, password)
+>>> manage.create_user('dev', redshift_username, password)
+>>> manage.create_user('prod', redshift_username, password)
 
 >>> manage.post_user_creds_to_gdrive(gdrive_username, redshift_username, password)
 Successfully created creds for user 'newuser' and sent a notification email.
@@ -42,6 +42,8 @@ Successfully created creds for user 'newuser' and sent a notification email.
 Tell the user that their creds are in the mail, and you're done. The doc will get dumped in the top-level folder of your Google Drive account, but feel free to move it into a subdirectory.
 
 The first time you run `post_user_creds_to_gdrive`, a browser window should open for an authorization workflow. Choose your `@simple.com` Google user account and accept the permissions for the "Secure Cred Distribution" app. The result gets cached as `access_token.json` with an expiration date a few months in the future.
+
+If you need to reset a password, use `set_password` method rather than `create_user`.
 
 ## Creating a Service Account
 
@@ -55,8 +57,8 @@ As in the previous section, fire up a Python interpreter with `PGUSER` and `PGPA
 >>> devpass = manage.random_password()
 >>> prodpass = manage.random_password()
 
->>> manage.create_user(manage.DB_HOSTS['dev' ], service_name, devpass)
->>> manage.create_user(manage.DB_HOSTS['prod'], service_name, prodpass)
+>>> manage.create_user('dev', service_name, devpass)
+>>> manage.create_user('prod', service_name, prodpass)
 
 >>> cleartext = manage.text_for_service_cred_upload_request(service, devpass, prodpass)
 >>> ciphertext = manage.encrypted_for_s3_uploaders(cleartext)

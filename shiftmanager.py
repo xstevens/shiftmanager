@@ -84,6 +84,11 @@ S3_UPLOADER_FINGERPRINTS = [
 ]
 
 
+def _get_host(host):
+    if host in DB_HOSTS:
+        return DB_HOSTS[host]
+    return host
+
 def random_password(length=64):
     """
     Return a strong and valid password for Redshift.
@@ -118,16 +123,14 @@ def create_user(host, username, password):
     Create a new user account.
     """
 
-    try:
-        conn = psycopg2.connect(
-            host=host,
-            database='analytics',
-            user=os.environ["PGUSER"],
-            password=os.environ["PGPASSWORD"],
-        )
-    except Exception as e:
-        print e
-        print "Unable to connect to db"
+    host = _get_host(host)
+    print host
+    conn = psycopg2.connect(
+        host=host,
+        database='analytics',
+        user=os.environ["PGUSER"],
+        password=os.environ["PGPASSWORD"],
+    )
 
     cur = conn.cursor()
 
@@ -135,6 +138,30 @@ def create_user(host, username, password):
     CREATE USER {username}
     PASSWORD '{password}'
     IN GROUP analyticsusers;
+    """.format(**locals()))
+
+    conn.commit()
+
+
+def set_password(host, username, password):
+    """
+    Set a user's password.
+    """
+
+    host = _get_host(host)
+
+    conn = psycopg2.connect(
+        host=host,
+        database='analytics',
+        user=os.environ["PGUSER"],
+        password=os.environ["PGPASSWORD"],
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    ALTER USER {username}
+    PASSWORD '{password}';
     """.format(**locals()))
 
     conn.commit()
