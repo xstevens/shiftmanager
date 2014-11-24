@@ -1,16 +1,10 @@
 #!/usr/bin/env python
 
-import gdata.docs.service
-import gdata.docs.client
-import gdata.gauth
 import argparse
 import oauth2client
 from oauth2client import tools
-from oauth2client.client import flow_from_clientsecrets, OAuth2WebServerFlow
+from oauth2client.client import flow_from_clientsecrets
 from oauth2client.file import Storage
-from oauth2client.tools import run
-import gdata.sites.client
-import gdata.sites.data
 
 import httplib2
 import apiclient.discovery
@@ -43,7 +37,7 @@ DESCRIPTION = 'Instructions and creds for accessing the Redshift cluster'
 # Database hosts
 DB_HOSTS = {
     'prod': 'prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com',
-    'dev' :  'dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com',
+    'dev':  'dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com',
 }
 
 # Credentials text file template
@@ -80,13 +74,13 @@ aws s3 cp PGPASSWORD s3://com-simple-dev/credentials/{service_name}/service-keys
 
 echo "{prodpass}" > PGPASSWORD
 aws s3 cp PGPASSWORD s3://com-simple-prod/credentials/{service_name}/service-keys/PGPASSWORD
-"""
+"""  # noqa
 
 S3_UPLOADER_FINGERPRINTS = [
-    "E034918ABA561DD06CAF46D8C4721EA079FF66A9", # security@simple
-    "4D51E7FEA4886C3A6BAA3A4C09A69F598386962C", # moyer
-    "C066921AF167318A937C104DBD221018E2BD32EF", # mehlert
-    "BF7F08BCCB9A9427094E32876DBA10920728A5D5", # steven
+    "E034918ABA561DD06CAF46D8C4721EA079FF66A9",  # security@simple
+    "4D51E7FEA4886C3A6BAA3A4C09A69F598386962C",  # moyer
+    "C066921AF167318A937C104DBD221018E2BD32EF",  # mehlert
+    "BF7F08BCCB9A9427094E32876DBA10920728A5D5",  # steven
 ]
 
 
@@ -105,7 +99,11 @@ def random_password(length=64):
     """
     rand = random.SystemRandom()
     invalid_chars = r'''\/'"@ '''
-    valid_chars_set = set(string.digits + string.letters + string.punctuation) - set(invalid_chars)
+    valid_chars_set = set(
+        string.digits +
+        string.letters +
+        string.punctuation
+    ) - set(invalid_chars)
     valid_chars = list(valid_chars_set)
     chars = [rand.choice(string.ascii_uppercase),
              rand.choice(string.ascii_lowercase),
@@ -121,12 +119,12 @@ def create_user(host, username, password):
     """
 
     try:
-       conn = psycopg2.connect(
-          host = host,
-          database = 'analytics',
-          user = os.environ["PGUSER"],
-          password = os.environ["PGPASSWORD"],
-       )
+        conn = psycopg2.connect(
+            host=host,
+            database='analytics',
+            user=os.environ["PGUSER"],
+            password=os.environ["PGPASSWORD"],
+        )
     except Exception as e:
         print e
         print "Unable to connect to db"
@@ -152,9 +150,10 @@ def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
 
     email = '{0}@simple.com'.format(gdrive_username)
 
-    flow = flow_from_clientsecrets(CLIENT_SECRETS,
-                                   scope=OAUTH2_SCOPE,
-                                   redirect_uri=oauth2client.client.OOB_CALLBACK_URN)
+    flow = flow_from_clientsecrets(
+        CLIENT_SECRETS,
+        scope=OAUTH2_SCOPE,
+        redirect_uri=oauth2client.client.OOB_CALLBACK_URN)
 
     storage = Storage(STORAGE_FILENAME)
 
@@ -185,7 +184,8 @@ def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
         gdoc.seek(0)
 
         # Insert a file. Files are comprised of contents and metadata.
-        # MediaFileUpload abstracts uploading file contents from a file on disk.
+        # MediaFileUpload abstracts uploading file contents from a
+        # file on disk.
         media_body = apiclient.http.MediaFileUpload(
             gdoc.name,
             mimetype=MIMETYPE,
@@ -193,7 +193,10 @@ def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
         )
 
         # Perform the request.
-        new_file = drive_service.files().insert(body=body, media_body=media_body).execute()
+        new_file = drive_service.files().insert(
+            body=body,
+            media_body=media_body
+        ).execute()
 
     # Add the target user as a reader.
     new_permission = {
@@ -207,7 +210,8 @@ def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
         emailMessage="",
     ).execute()
 
-    print "Successfully created creds for user '{0}' and sent a notification email.".format(redshift_username)
+    print ("Successfully created creds for user '{0}' "
+           "and sent a notification email.").format(redshift_username)
 
 
 def encrypted_for_s3_uploaders(text):
@@ -226,7 +230,10 @@ def encrypted_for_s3_uploaders(text):
         for uid in key['uids']:
             print("    " + uid)
 
-    encrypted_data = gpg.encrypt(text, S3_UPLOADER_FINGERPRINTS, always_trust=True)
+    encrypted_data = gpg.encrypt(
+        text,
+        S3_UPLOADER_FINGERPRINTS,
+        always_trust=True)
 
     return str(encrypted_data)
 
