@@ -124,7 +124,7 @@ def create_user(host, username, password):
     """
 
     host = _get_host(host)
-    print host
+
     conn = psycopg2.connect(
         host=host,
         database='analytics',
