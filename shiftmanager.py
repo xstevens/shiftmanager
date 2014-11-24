@@ -14,7 +14,6 @@ import apiclient.errors
 import psycopg2
 import gnupg
 
-import os
 import string
 import random
 from tempfile import NamedTemporaryFile
@@ -84,6 +83,12 @@ S3_UPLOADER_FINGERPRINTS = [
 ]
 
 
+def _get_host(host):
+    if host in DB_HOSTS:
+        return DB_HOSTS[host]
+    return host
+
+
 def random_password(length=64):
     """
     Return a strong and valid password for Redshift.
@@ -118,31 +123,51 @@ def create_user(host, username, password):
     Create a new user account.
     """
 
-    try:
-        conn = psycopg2.connect(
-            host=host,
-            database='analytics',
-            user=os.environ["PGUSER"],
-            password=os.environ["PGPASSWORD"],
-        )
-    except Exception as e:
-        print e
-        print "Unable to connect to db"
+    host = _get_host(host)
+
+    conn = psycopg2.connect(
+        host=host,
+        database='analytics',
+        port=5439,
+    )
 
     cur = conn.cursor()
 
     cur.execute("""
-    CREATE USER {username}
-    PASSWORD '{password}'
+    CREATE USER {0}
+    PASSWORD '{1}'
     IN GROUP analyticsusers;
-    """.format(**locals()))
+    """.format(username, password))
+
+    conn.commit()
+
+
+def set_password(host, username, password):
+    """
+    Set a user's password.
+    """
+
+    host = _get_host(host)
+
+    conn = psycopg2.connect(
+        host=host,
+        database='analytics',
+        port=5439,
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    ALTER USER {0}
+    PASSWORD '{1}';
+    """.format(username, password))
 
     conn.commit()
 
 
 def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
     """
-    Uploads a text file to Google Drive, shared with *gdriv_username*.
+    Uploads a text file to Google Drive, shared with *gdrive_username*.
 
     The text is taken from a template, with usernames and passwords inserted
     as appropriate.
