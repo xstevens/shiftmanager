@@ -173,6 +173,9 @@ def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
     as appropriate.
     """
 
+    # In case the user included '@simple.com' in the username
+    gdrive_username = gdrive_username.split('@')[0]
+
     email = '{0}@simple.com'.format(gdrive_username)
 
     flow = flow_from_clientsecrets(
