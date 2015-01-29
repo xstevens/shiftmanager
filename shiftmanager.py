@@ -157,7 +157,8 @@ class TableDefinitionStatement(object):
             WHERE relname = '{0}'
             """
             cur.execute(query_template.format(tablename))
-            self.diststyle = diststyle or DISTSTYLES_BY_INDEX[cur.fetchone()[0]]
+            self.diststyle = (diststyle or
+                              DISTSTYLES_BY_INDEX[cur.fetchone()[0]])
 
         if distkey and not diststyle:
             self.diststyle = 'KEY'
