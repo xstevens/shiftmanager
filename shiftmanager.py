@@ -15,9 +15,11 @@ import apiclient.errors
 import psycopg2
 import gnupg
 
+import itertools
 import string
 import random
 import os
+from contextlib import closing
 from tempfile import NamedTemporaryFile
 from subprocess import check_output
 
@@ -123,7 +125,8 @@ class TableDefinitionStatement(object):
                        if line.startswith('REVOKE ')
                        or line.startswith('GRANT ')]
         self.alters = [line for line in lines
-                       if line.startswith('ALTER TABLE ')]
+                       if line.startswith('ALTER TABLE ')
+                       and not line.startswith('ALTER TABLE ONLY')]
         if owner:
             self.alters.append('ALTER TABLE {0} OWNER to {1};'
                                .format(tablename, owner))
@@ -136,25 +139,26 @@ class TableDefinitionStatement(object):
                             and line.startswith(');')][0]
         self.create_lines = lines[create_start_index:create_end_index]
 
-        cur = conn.cursor()
-        query_template = """
-        SELECT \"column\" from pg_table_def
-        WHERE tablename = '{0}'
-        AND {1} = {2}
-        """
-        cur.execute(query_template.format(tablename, 'distkey', "'t'"))
-        result = cur.fetchall()
-        self.distkey = distkey or result and result[0][0] or None
-        cur.execute(query_template.format(tablename, 'sortkey', "1"))
-        result = cur.fetchall()
-        self.sortkey = sortkey or result and result[0][0] or None
+        with closing(conn.cursor()) as cur:
+            query_template = """
+            SELECT \"column\" from pg_table_def
+            WHERE tablename = '{0}'
+            AND {1} = {2}
+            """
+            cur.execute(query_template.format(tablename, 'distkey', "'t'"))
+            result = cur.fetchall()
+            self.distkey = distkey or result and result[0][0] or None
+            cur.execute(query_template.format(tablename, 'sortkey', "1"))
+            result = cur.fetchall()
+            self.sortkey = sortkey or result and result[0][0] or None
 
-        query_template = """
-        SELECT reldiststyle FROM pg_class
-        WHERE relname = '{0}'
-        """
-        cur.execute(query_template.format(tablename))
-        self.diststyle = diststyle or DISTSTYLES_BY_INDEX[cur.fetchone()[0]]
+            query_template = """
+            SELECT reldiststyle FROM pg_class
+            WHERE relname = '{0}'
+            """
+            cur.execute(query_template.format(tablename))
+            self.diststyle = diststyle or DISTSTYLES_BY_INDEX[cur.fetchone()[0]]
+
         if distkey and not diststyle:
             self.diststyle = 'KEY'
         if self.diststyle.upper() in ['ALL', 'EVEN']:
@@ -166,12 +170,12 @@ class TableDefinitionStatement(object):
         """
         names = {
             'tablename': self.tablename,
-            'srcname': 'tempsource_' + self.tablename,
-            'tgtname': 'temptarget_' + self.tablename,
+            'oldtmp': 'temp_old_' + self.tablename,
+            'newtmp': 'temp_new_' + self.tablename,
         }
 
         create_lines = self.create_lines[:]
-        create_lines[0] = create_lines[0].replace(self.tablename, '{tgtname}')
+        create_lines[0] = create_lines[0].replace(self.tablename, '{newtmp}')
         create_lines.append(") DISTSTYLE {0}".format(self.diststyle))
         if self.distkey:
             create_lines.append("  DISTKEY({0})".format(self.distkey))
@@ -179,19 +183,18 @@ class TableDefinitionStatement(object):
             create_lines.append("  SORTKEY({0})".format(self.sortkey))
         create_lines[-1] += ';\n'
 
-        all_lines = (
-            create_lines +
-            ["ALTER TABLE {tablename} RENAME TO {srcname};"] +
-            ["INSERT INTO {tgtname} (SELECT * FROM {srcname});"] +
-            ["ALTER TABLE {tgtname} RENAME TO {tablename};"] +
-            ["DROP TABLE {srcname};\n"] +
-            self.alters +
-            [''] +
+        all_lines = itertools.chain(
+            # Alter the original table ASAP, so that it gets locked for
+            # reads/writes outside the transaction.
+            ["SET search_path = analytics, pg_catalog;\n"],
+            ["ALTER TABLE {tablename} RENAME TO {oldtmp};"],
+            create_lines,
+            ["INSERT INTO {newtmp} (SELECT * FROM {oldtmp});"],
+            ["ALTER TABLE {newtmp} RENAME TO {tablename};"],
+            ["DROP TABLE {oldtmp};\n"],
+            self.alters,
+            [''],
             self.grants)
-        for i, line in enumerate(all_lines):
-            all_lines[i] = '  ' + line
-        all_lines.insert(0, 'BEGIN TRANSACTION;\n')
-        all_lines.append('\nEND TRANSACTION;')
 
         return '\n'.join(all_lines).format(**names)
 
