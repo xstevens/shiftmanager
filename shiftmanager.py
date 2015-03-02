@@ -68,6 +68,9 @@ And the dev cluster:
 
 The port for both clusters is 5439.
 
+To get started, take a look at the analyst setup guide on GitHub:
+https://github.banksimple.com/analytics/sup/blob/master/analyst-setup.md
+
 For accessing Redshift through command-line tools, you may want to set
 the following environment variables:
 
@@ -265,6 +268,8 @@ def create_user(host, username, password):
     CREATE USER {0}
     PASSWORD '{1}'
     IN GROUP analyticsusers;
+    ALTER USER {0}
+    SET wlm_query_slot_count TO 4;
     """.format(username, password))
 
     conn.commit()

@@ -60,7 +60,7 @@ As in the previous section, fire up a Python interpreter with `PGUSER` and `PGPA
 >>> manage.create_user('dev', service_name, devpass)
 >>> manage.create_user('prod', service_name, prodpass)
 
->>> cleartext = manage.text_for_service_cred_upload_request(service, devpass, prodpass)
+>>> cleartext = manage.text_for_service_cred_upload_request(service_name, devpass, prodpass)
 >>> ciphertext = manage.encrypted_for_s3_uploaders(cleartext)
 Encypting for the following uids:
     Simple Security <security@simple.com>
