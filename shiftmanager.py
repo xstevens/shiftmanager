@@ -426,9 +426,8 @@ def encrypted_for_user(text, username):
             gpg.recv_keys(KEY_SERVER, *key_ids)
             # The user's keys are now imported, so try again
             return encrypted_for_user(text, username)
-
-    if not keys:
-        raise ValueError("No key found for '{0}'".format(email))
+        else:
+            raise ValueError("No key found for '{0}'".format(email))
 
     encrypted_data = gpg.encrypt(
         text,
