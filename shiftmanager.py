@@ -53,7 +53,7 @@ DB_HOSTS = {
 
 # Credentials text file template
 CREDSFILE_TEMPLATE = """\
-Redshift credentials for {gdrive_username}@simple.com
+# Redshift credentials for {gdrive_username}@simple.com
 
 username:
 {redshift_username}
@@ -61,12 +61,11 @@ username:
 password:
 {password}
 
-You have accounts both on the production cluster:
-    prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com
-And the dev cluster:
-   dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com
+Redshift cluster hostname:
+prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com
 
-The port for both clusters is 5439.
+Port number:
+5439
 
 To get started, take a look at the analyst setup guide on GitHub:
 https://github.banksimple.com/analytics/sup/blob/master/analyst-setup.md
@@ -75,9 +74,18 @@ For accessing Redshift through command-line tools, you may want to set
 the following environment variables:
 
 PGUSER={redshift_username}
-PGPASSWORD={password}
+PGPASSWORD='{password}'
 PGHOST=prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com
 PGPORT=5439
+"""
+
+ENCRYPTED_DOC_BOILERPLATE = """\
+To decrypt, paste the following into a Terminal.app window
+(include everything from 'gpg' to 'EOF'):
+
+gpg -d <<EOF
+{cyphertext}
+EOF
 """
 
 SERVICE_S3_UPLOAD_REQUEST_TEMPLATE = """\
@@ -96,6 +104,8 @@ S3_UPLOADER_FINGERPRINTS = [
     "C066921AF167318A937C104DBD221018E2BD32EF",  # mehlert
     "BF7F08BCCB9A9427094E32876DBA10920728A5D5",  # steven
 ]
+
+KEY_SERVER = 'hkps://hkps.pool.sks-keyservers.net'
 
 
 class TableDefinitionStatement(object):
@@ -397,6 +407,40 @@ def encrypted_for_s3_uploaders(text):
         always_trust=True)
 
     return str(encrypted_data)
+
+
+def encrypted_for_user(text, username):
+
+    email = '{0}@simple.com'.format(username)
+    gpg = gnupg.GPG()
+
+    keys = [key for key in gpg.list_keys()
+            if key_contains_email(key, email)]
+
+    if not keys:
+        searched_keys = gpg.search_keys(email, KEY_SERVER)
+        keys = [key for key in searched_keys
+                if key_contains_email(key, email)]
+        if keys:
+            key_ids = [key['keyid'] for key in keys]
+            gpg.recv_keys(KEY_SERVER, *key_ids)
+            # The user's keys are now imported, so try again
+            return encrypted_for_user(text, username)
+
+    if not keys:
+        raise ValueError("No key found for '{0}'".format(email))
+
+    encrypted_data = gpg.encrypt(
+        text,
+        [key['fingerprint'] for key in keys],
+        always_trust=True)
+
+    return str(encrypted_data)
+
+
+def key_contains_email(key_dict, email):
+    target = '<' + email + '>'
+    return any(uid.endswith(target) for uid in key_dict['uids'])
 
 
 def text_for_service_cred_upload_request(service_name, devpass, prodpass):
