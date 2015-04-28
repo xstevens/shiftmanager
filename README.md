@@ -47,6 +47,8 @@ If you need to reset a password, use `set_password` method rather than `create_u
 
 ## Creating a Service Account
 
+*Note that this process is changing to use the new [cloudbank credentials framework](https://github.banksimple.com/ops/cloudbank#credentials). Check with klukas and moyer if you need to do this right now.*
+
 When a service needs to access Redshift, we create accounts under the name of the service and then store the associated passwords in S3. In order to get the passwords in S3, the security team prefers that we GPG-encode a text document containing the passwords, and publish that in a private gist.
 
 As in the previous section, fire up a Python interpreter with `PGUSER` and `PGPASSWORD` set:
