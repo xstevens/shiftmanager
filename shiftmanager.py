@@ -336,15 +336,21 @@ def dedupe(host, table):
     but this avoids dropping the original table, so
     all keys and grants on the original table are preserved.
 
-    See http://docs.aws.amazon.com/redshift/latest/dg/performing-a-deep-copy.html
+    See
+    http://docs.aws.amazon.com/redshift/latest/dg/performing-a-deep-copy.html
     """
 
     temptable = "{}_copied".format(table)
 
     with redshift_transaction(host) as (conn, cur):
         cur.execute("""
-        LOCK {table}; -- make all updates to this table block
-        CREATE TEMP TABLE {temptable} (LIKE {table}); -- copies dist and sort keys
+        -- make all updates to this table block
+        LOCK {table};
+
+        -- CREATE TABLE LIKE copies the dist key
+        CREATE TEMP TABLE {temptable} (LIKE {table});
+
+        -- move the data
         INSERT INTO {temptable} SELECT DISTINCT * FROM {table};
         TRUNCATE {table};
         INSERT INTO {table} (SELECT * FROM {temptable});
