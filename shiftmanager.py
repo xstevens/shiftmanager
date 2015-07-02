@@ -19,7 +19,7 @@ import itertools
 import string
 import random
 import os
-from contextlib import closing
+from contextlib import closing, contextmanager
 from tempfile import NamedTemporaryFile
 from subprocess import check_output
 
@@ -101,11 +101,31 @@ aws s3 cp PGPASSWORD s3://com-simple-prod/credentials/{service_name}/service-key
 S3_UPLOADER_FINGERPRINTS = [
     "E034918ABA561DD06CAF46D8C4721EA079FF66A9",  # security@simple
     "4D51E7FEA4886C3A6BAA3A4C09A69F598386962C",  # moyer
-    "C066921AF167318A937C104DBD221018E2BD32EF",  # mehlert
     "BF7F08BCCB9A9427094E32876DBA10920728A5D5",  # steven
+    "BEB36E5FB5B7572F7A8714E2F0D203EF70A4E423",  # max
+    "6C6F4032059B07246503843DA54195C6AEA6CF00",  # xavier
+    "06B067C2680D67E7B646989A66A7908C87CCE7F0",  # rob
+    "8700648A0ADB63CFDF18B6388C29A9E5E8660399",  # klukas
 ]
 
 KEY_SERVER = 'hkps://hkps.pool.sks-keyservers.net'
+
+
+@contextmanager
+def redshift_transaction(host, database='analytics', port=5439):
+    host = _get_host(host)
+    with closing(psycopg2.connect(host=host,
+                                  database=database,
+                                  port=port)) as conn:
+        cur = conn.cursor()
+
+        # Make sure we create tables in the analytics schema
+        cur.execute("SET search_path = analytics")
+
+        # Return the connection and cursor to the calling function
+        yield conn, cur
+
+        conn.commit()
 
 
 class TableDefinitionStatement(object):
@@ -306,6 +326,36 @@ def set_password(host, username, password):
     """.format(username, password))
 
     conn.commit()
+
+
+def dedupe(host, table):
+    """
+    Remove duplicate entries from *table* on *host* using DISTINCT.
+
+    Uses the slowest of the deep copy methods (temp table + truncate),
+    but this avoids dropping the original table, so
+    all keys and grants on the original table are preserved.
+
+    See
+    http://docs.aws.amazon.com/redshift/latest/dg/performing-a-deep-copy.html
+    """
+
+    temptable = "{}_copied".format(table)
+
+    with redshift_transaction(host) as (conn, cur):
+        cur.execute("""
+        -- make all updates to this table block
+        LOCK {table};
+
+        -- CREATE TABLE LIKE copies the dist key
+        CREATE TEMP TABLE {temptable} (LIKE {table});
+
+        -- move the data
+        INSERT INTO {temptable} SELECT DISTINCT * FROM {table};
+        DELETE FROM {table};  -- slower than TRUNCATE, but transaction-safe
+        INSERT INTO {table} (SELECT * FROM {temptable});
+        DROP TABLE {temptable};
+        """.format(table=table, temptable=temptable))
 
 
 def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
