@@ -352,7 +352,7 @@ def dedupe(host, table):
 
         -- move the data
         INSERT INTO {temptable} SELECT DISTINCT * FROM {table};
-        TRUNCATE {table};
+        DELETE FROM {table};  -- slower than TRUNCATE, but transaction-safe
         INSERT INTO {table} (SELECT * FROM {temptable});
         DROP TABLE {temptable};
         """.format(table=table, temptable=temptable))
