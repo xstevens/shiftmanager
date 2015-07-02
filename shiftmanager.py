@@ -19,7 +19,7 @@ import itertools
 import string
 import random
 import os
-from contextlib import closing
+from contextlib import closing, contextmanager
 from tempfile import NamedTemporaryFile
 from subprocess import check_output
 
@@ -109,6 +109,23 @@ S3_UPLOADER_FINGERPRINTS = [
 ]
 
 KEY_SERVER = 'hkps://hkps.pool.sks-keyservers.net'
+
+
+@contextmanager
+def redshift_transaction(host, database='analytics', port=5439):
+    host = _get_host(host)
+    with closing(psycopg2.connect(host=host,
+                                  database=database,
+                                  port=port)) as conn:
+        cur = conn.cursor()
+
+        # Make sure we create tables in the analytics schema
+        cur.execute("SET search_path = analytics")
+
+        # Return the connection and cursor to the calling function
+        yield conn, cur
+
+        conn.commit()
 
 
 class TableDefinitionStatement(object):
@@ -309,6 +326,30 @@ def set_password(host, username, password):
     """.format(username, password))
 
     conn.commit()
+
+
+def dedupe(host, table):
+    """
+    Remove duplicate entries from *table* on *host* using DISTINCT.
+
+    Uses the slowest of the deep copy methods (temp table + truncate),
+    but this avoids dropping the original table, so
+    all keys and grants on the original table are preserved.
+
+    See http://docs.aws.amazon.com/redshift/latest/dg/performing-a-deep-copy.html
+    """
+
+    temptable = "{}_copied".format(table)
+
+    with redshift_transaction(host) as (conn, cur):
+        cur.execute("""
+        LOCK {table}; -- make all updates to this table block
+        CREATE TEMP TABLE {temptable} (LIKE {table}); -- copies dist and sort keys
+        INSERT INTO {temptable} SELECT DISTINCT * FROM {table};
+        TRUNCATE {table};
+        INSERT INTO {table} (SELECT * FROM {temptable});
+        DROP TABLE {temptable};
+        """.format(table=table, temptable=temptable))
 
 
 def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
