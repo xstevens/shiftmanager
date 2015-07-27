@@ -58,7 +58,3 @@ docs/_build/
 # Virtual environments
 venv/
 .venv/
-
-# Configuration
-
-config.py

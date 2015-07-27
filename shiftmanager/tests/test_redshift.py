@@ -7,7 +7,6 @@ Test Runner: PyTest
 """
 
 from mock import MagicMock
-import psycopg2
 import pytest
 
 import shiftmanager.redshift as rs
@@ -66,6 +65,7 @@ def test_create_user(mock_conn):
 
     assert_execute(mock_conn, expected)
 
+
 def test_set_password(mock_conn):
 
     rs.set_password("dev", "swiper", "swiperpass")
@@ -76,6 +76,7 @@ def test_set_password(mock_conn):
     """
 
     assert_execute(mock_conn, expected)
+
 
 def test_dedupe(mock_conn):
 
@@ -96,4 +97,3 @@ def test_dedupe(mock_conn):
         """
 
     assert_execute(mock_conn, expected)
-
