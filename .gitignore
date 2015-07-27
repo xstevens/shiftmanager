@@ -57,3 +57,7 @@ docs/_build/
 # Virtual environments
 venv/
 .venv/
+
+# Configuration
+
+shiftmanager/config.py
