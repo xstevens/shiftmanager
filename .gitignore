@@ -60,4 +60,4 @@ venv/
 
 # Configuration
 
-shiftmanager/config.py
+config.py
