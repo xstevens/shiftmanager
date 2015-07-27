@@ -11,6 +11,7 @@ import httplib2
 import apiclient.discovery
 import apiclient.http
 import apiclient.errors
+import pkg_resources
 
 import gnupg
 
@@ -21,10 +22,12 @@ from tempfile import NamedTemporaryFile
 OAUTH2_SCOPE = 'https://www.googleapis.com/auth/drive'
 
 # Location of the client secrets.
-CLIENT_SECRETS = 'data/client_secrets.json'
+CLIENT_SECRETS = pkg_resources.resource_filename('shiftmanager',
+                                                 'data/client_secrets.json')
 
 # Local access token file
-STORAGE_FILENAME = 'access_token.json'
+STORAGE_FILENAME = pkg_resources.resource_filename('shiftmanager',
+                                                   'data/access_token.json')
 
 # Metadata about the file.
 MIMETYPE = 'text/plain'
