@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from contextlib import closing, contextmanager
+import json
 import itertools
 import os
 import random
@@ -9,6 +10,8 @@ from subprocess import check_output
 
 from boto.s3.connection import S3Connection
 import psycopg2
+
+import shiftmanager.util as util
 
 # Redshift distribution styles
 DISTSTYLES_BY_INDEX = {
@@ -129,6 +132,38 @@ class Shift(object):
         rand.shuffle(chars)
         return ''.join(chars)
 
+    @staticmethod
+    def gen_jsonpaths(json_doc, list_idx=None):
+        """
+        Generate Redshift jsonpath file for given JSON document or dict.
+
+        If an array is present, you can specify an index to use for that
+        field in the jsonpaths result. Right now only a single index is
+        supported.
+
+        Results will be ordered alphabetically by default.
+
+        Parameters
+        ----------
+        json_doc: str or dict
+            Dictionary or JSON-able string
+        list_idx: int
+            Index for array position
+
+        Returns
+        -------
+        Dict
+        """
+        if isinstance(json_doc, str):
+            parsed = json.loads(json_doc)
+        else:
+            parsed = json_doc
+
+        paths_set = util.recur_dict(set(), parsed, list_idx=list_idx)
+        paths_list = list(paths_set)
+        paths_list.sort()
+        return {"jsonpaths": paths_list}
+
     def _get_bucket_from_cache(self, buckpath):
         """Get bucket from cache, or add to cache if does not exist"""
         if buckpath not in self.bucket_cache:
@@ -200,7 +235,7 @@ class Shift(object):
         self._execute_and_commit(statement)
 
     def copy_json_to_table(self, bucket, json_iter, table_name, slices=32,
-                           clean_up=True):
+                           clean_up=True, jsonpaths=None):
         """
         Given a list of JSON blobs, COPY them to the given `table_name`
 
@@ -212,7 +247,7 @@ class Shift(object):
         ----------
         bucket: str
             S3 bucket for writes
-        json_list: iterable
+        json_iter: iterable
             Iterable of JSON documents
         table_name: str
             Table name for COPY
@@ -221,6 +256,9 @@ class Shift(object):
             on S3 for efficient COPY.
         clean_up: bool
             Clean up S3 bucket after COPY completes
+        jsonpaths: dict
+            Redshift jsonpaths file. If None, will autogenerate with
+            alphabetical order
         """
         pass
 

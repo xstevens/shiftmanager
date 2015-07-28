@@ -53,6 +53,17 @@ def test_random_password(shift):
             assert char not in password
 
 
+def test_jsonpaths(shift):
+
+    test_dict_1 = {"one": 1, "two": {"three": 3}}
+    expected_1 = {"jsonpaths": ["['one']", "['two']['three']"]}
+    assert expected_1 == shift.gen_jsonpaths(test_dict_1)
+
+    test_dict_2 = {"one": [0, 1, 2], "a": {"b": [0]}}
+    expected_2 = {"jsonpaths": ["['a']['b'][1]", "['one'][1]"]}
+    assert expected_2 == shift.gen_jsonpaths(test_dict_2, 1)
+
+
 def test_create_user(shift):
 
     shift.create_user("swiper", "swiperpass")
