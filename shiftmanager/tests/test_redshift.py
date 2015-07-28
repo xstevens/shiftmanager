@@ -22,65 +22,67 @@ def mocks():
 
 
 @pytest.fixture
-def mock_conn(monkeypatch, mocks):
+def shift(monkeypatch, mocks):
     """Patch psycopg2 with connection mocks, return conn"""
+    boto_mock = MagicMock()
     monkeypatch.setattr('psycopg2.connect',
                         lambda *args, **kwargs: mocks)
-    return mocks
+    shift = rs.Shift("", "", "", "", "", "", connect_s3=False)
+    return shift
 
 
-def assert_execute(conn, expected):
+def assert_execute(shift, expected):
     """Helper for asserting an executed SQL statement on mock connection"""
-    conn.cursor().execute.assert_called_with(expected)
+    shift.conn.cursor().execute.assert_called_with(expected)
 
 
-def test_redshift_transaction(mock_conn):
+def test_redshift_transaction(shift):
 
-    with rs.redshift_transaction("redshift_host") as (conn, cur):
+    with shift.redshift_transaction("") as (conn, cur):
         pass
 
-    cur.execute.assert_called_once_with("SET search_path = analytics")
-    conn.commit.assert_called_with()
+    shift.cur.execute.assert_called_once_with("SET search_path = public")
+    shift.conn.commit.assert_called_with()
 
 
-def test_random_password():
-    for password in [rs.random_password() for i in range(0, 6, 1)]:
+def test_random_password(shift):
+    for password in [shift.random_password() for i in range(0, 6, 1)]:
         assert len(password) < 65
         assert len(password) > 7
         for char in r'''\/'"@ ''':
             assert char not in password
 
 
-def test_create_user(mock_conn):
+def test_create_user(shift):
 
-    rs.create_user("dev", "swiper", "swiperpass")
-
-    expected = """
-    CREATE USER swiper
-    PASSWORD 'swiperpass'
-    IN GROUP analyticsusers;
-    ALTER USER swiper
-    SET wlm_query_slot_count TO 4;
-    """
-
-    assert_execute(mock_conn, expected)
-
-
-def test_set_password(mock_conn):
-
-    rs.set_password("dev", "swiper", "swiperpass")
+    shift.create_user("swiper", "swiperpass")
 
     expected = """
-    ALTER USER swiper
-    PASSWORD 'swiperpass';
-    """
+        CREATE USER swiper
+        PASSWORD 'swiperpass'
+        IN GROUP analyticsusers;
+        ALTER USER swiper
+        SET wlm_query_slot_count TO 4;
+        """
 
-    assert_execute(mock_conn, expected)
+    assert_execute(shift, expected)
 
 
-def test_dedupe(mock_conn):
+def test_set_password(shift):
 
-    rs.dedupe("dev", "test")
+    shift.set_password("swiper", "swiperpass")
+
+    expected = """
+        ALTER USER swiper
+        PASSWORD 'swiperpass';
+        """
+
+    assert_execute(shift, expected)
+
+
+def test_dedupe(shift):
+
+    shift.dedupe("test")
 
     expected = """
         -- make all updates to this table block
@@ -96,4 +98,4 @@ def test_dedupe(mock_conn):
         DROP TABLE test_copied;
         """
 
-    assert_execute(mock_conn, expected)
+    assert_execute(shift, expected)
