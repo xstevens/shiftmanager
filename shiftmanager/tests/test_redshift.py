@@ -12,14 +12,14 @@ import json
 import os
 import shutil
 
-from mock import MagicMock
+from mock import MagicMock, ANY
 import pytest
 
 import shiftmanager.redshift as rs
 
 
 @pytest.fixture
-def mocks():
+def mock_redshift():
     """Mock the psycopg2 connection"""
     mock_cur = MagicMock()
     mock_conn = MagicMock()
@@ -28,12 +28,45 @@ def mocks():
 
 
 @pytest.fixture
-def shift(monkeypatch, mocks):
+def mock_s3():
+    """Mock the S3 Connection, Bucket, and Key"""
+
+    class MockBucket(object):
+
+        s3keys = {}
+        name = "com.simple.mock"
+
+        def new_key(self, keypath):
+            key_mock = MagicMock()
+            self.s3keys[keypath] = key_mock
+            return key_mock
+
+        def delete_keys(self, keys):
+            self.recently_deleted_keys = keys
+
+    mock_S3 = MagicMock()
+    mock_S3.get_bucket.return_value = MockBucket()
+    return mock_S3
+
+
+@pytest.fixture
+def json_data():
+    data = [{"a": 1}, {"a": 2}, {"a": 3}, {"a": 4},
+            {"a": 5}, {"a": 6}, {"a": 7}, {"a": 8},
+            {"a": 9}, {"a": 10}, {"a": 11}, {"a": 12},
+            {"a": 13}, {"a": 14}, {"a": 15}, {"a": 16}]
+    return data
+
+@pytest.fixture
+def shift(monkeypatch, mock_redshift, mock_s3):
     """Patch psycopg2 with connection mocks, return conn"""
     boto_mock = MagicMock()
     monkeypatch.setattr('psycopg2.connect',
-                        lambda *args, **kwargs: mocks)
-    shift = rs.Shift("", "", "", "", "", "", connect_s3=False)
+                        lambda *args, **kwargs: mock_redshift)
+    monkeypatch.setattr('shiftmanager.redshift.Shift.get_s3_connection',
+                        lambda *args, **kwargs: mock_s3)
+    shift = rs.Shift("access_key", "secret_key", "", "", "", "",
+                     connect_s3=False)
     return shift
 
 
@@ -96,20 +129,16 @@ def chunk_checker(file_paths):
     assert expected_numbers == result_numbers
 
 
-def test_chunk_json_slices(shift):
+def test_chunk_json_slices(shift, json_data):
 
-    docs = [{"a": 1}, {"a": 2}, {"a": 3}, {"a": 4},
-            {"a": 5}, {"a": 6}, {"a": 7}, {"a": 8},
-            {"a": 9}, {"a": 10}, {"a": 11}, {"a": 12},
-            {"a": 13}, {"a": 14}, {"a": 15}, {"a": 16}]
-
+    data = json_data
     with temp_test_directory() as dpath:
         for slices in range(1, 19, 1):
-            with shift.chunk_json_slices(docs, slices, dpath) as (stamp, paths):
+            with shift.chunk_json_slices(data, slices, dpath) as (stamp, paths):
                 assert len(paths) == slices
                 chunk_checker(paths)
 
-            with shift.chunk_json_slices(docs, slices, dpath) as (stamp, paths):
+            with shift.chunk_json_slices(data, slices, dpath) as (stamp, paths):
                 assert len(paths) == slices
                 chunk_checker(paths)
 
@@ -159,3 +188,56 @@ def test_dedupe(shift):
         """
 
     assert_execute(shift, expected)
+
+
+def check_key_calls(s3keys, slices):
+    """Helper for checking keys have been called correctly"""
+
+    # Ensure we wrote the correct number of files, with the correct extensions
+    assert len(s3keys) == (slices + 2)
+    extensions = slices*["gz"]
+    extensions.extend(["manifest", "jsonpaths"])
+    extensions.sort()
+
+    res_ext = [v.split(".")[-1] for v in s3keys.keys()]
+    res_ext.sort()
+
+    assert res_ext == extensions
+
+    # Ensure each had contents set from file once, closed once
+    for val in s3keys.values():
+        val.set_contents_from_file.assert_called_once_with(ANY)
+        val.close.assert_called_once_with()
+
+def get_manifest_and_jsonpaths_keys(s3keys):
+    manifest = [x for x in s3keys.keys() if "manifest" in x][0]
+    jsonpaths = [x for x in s3keys.keys() if "jsonpaths" in x][0]
+    return manifest, jsonpaths
+
+def test_copy_to_json(shift, json_data):
+
+    jsonpaths = shift.gen_jsonpaths(json_data[0])
+
+    # With cleanup
+    shift.copy_json_to_table("com.simple.mock",
+                             "tmp/tests/",
+                             json_data,
+                             jsonpaths,
+                             "foo_table",
+                             slices=5)
+
+    # Get our mock bucket
+    bukkit = shift.s3conn.get_bucket("foo")
+    # 5 slices, one manifest, one jsonpaths
+    check_key_calls(bukkit.s3keys, 5)
+    manifest, jsonpaths = get_manifest_and_jsonpaths_keys(bukkit.s3keys)
+
+    expected = """
+        COPY foo_table
+        FROM '{}'
+        CREDENTIALS
+        JSON '{jpaths_key}'
+        MANIFEST
+        GZIP
+        TIMEFORMAT 'auto';
+        """
