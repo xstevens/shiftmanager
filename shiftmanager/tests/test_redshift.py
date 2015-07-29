@@ -76,11 +76,11 @@ def test_random_password(shift):
 def test_jsonpaths(shift):
 
     test_dict_1 = {"one": 1, "two": {"three": 3}}
-    expected_1 = {"jsonpaths": ["['one']", "['two']['three']"]}
+    expected_1 = {"jsonpaths": ["$['one']", "$['two']['three']"]}
     assert expected_1 == shift.gen_jsonpaths(test_dict_1)
 
     test_dict_2 = {"one": [0, 1, 2], "a": {"b": [0]}}
-    expected_2 = {"jsonpaths": ["['a']['b'][1]", "['one'][1]"]}
+    expected_2 = {"jsonpaths": ["$['a']['b'][1]", "$['one'][1]"]}
     assert expected_2 == shift.gen_jsonpaths(test_dict_2, 1)
 
 def chunk_checker(file_paths):
@@ -105,13 +105,13 @@ def test_chunk_json_slices(shift):
 
     with temp_test_directory() as dpath:
         for slices in range(1, 19, 1):
-            with shift.chunk_json_slices(docs, slices, dpath) as file_paths:
-                assert len(file_paths) == slices
-                chunk_checker(file_paths)
+            with shift.chunk_json_slices(docs, slices, dpath) as (stamp, paths):
+                assert len(paths) == slices
+                chunk_checker(paths)
 
-            with shift.chunk_json_slices(docs, slices, dpath) as file_paths:
-                assert len(file_paths) == slices
-                chunk_checker(file_paths)
+            with shift.chunk_json_slices(docs, slices, dpath) as (stamp, paths):
+                assert len(paths) == slices
+                chunk_checker(paths)
 
 def test_create_user(shift):
 

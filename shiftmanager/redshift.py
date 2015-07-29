@@ -11,11 +11,17 @@ import math
 import os
 import os.path
 import random
+from ssl import CertificateError
 import string
+try:
+    from io import StringIO
+except ImportError:
+    from cStringIO import StringIO
 from subprocess import check_output
 import tempfile
 
 from boto.s3.connection import S3Connection
+from boto.s3.connection import OrdinaryCallingFormat
 import psycopg2
 
 import shiftmanager.util as util
@@ -60,12 +66,11 @@ class Shift(object):
             Make S3 connection. If False, Redshift methods will still work
         """
 
-        if connect_s3:
-            if aws_access_key_id and aws_secret_access_key:
-                self.s3conn = S3Connection(aws_access_key_id,
-                                           aws_secret_access_key)
-            else:
-                self.s3conn = S3Connection()
+        self.aws_access_key_id = aws_access_key_id or \
+                                 os.environ.get('AWS_ACCESS_KEY_ID')
+        self.aws_secret_access_key = aws_secret_access_key or \
+                                 os.environ.get('AWS_SECRET_ACCESS_KEY')
+        self.s3conn = self.get_s3_connection()
 
         database = database or os.environ.get('PGDATABASE')
         user = user or os.environ.get('PGUSER')
@@ -112,14 +117,14 @@ class Shift(object):
 
     @staticmethod
     @contextmanager
-    def chunk_json_slices(docs, slices, directory=None, clean_on_exit=True):
+    def chunk_json_slices(data, slices, directory=None, clean_on_exit=True):
         """
         Given an iterator of dicts, chunk them into `slices` and write to
         temp files on disk. Clean up when leaving scope
 
         Parameters
         ----------
-        docs: iter of dicts
+        data: iter of dicts
             Iterable of dictionaries to be serialized to chunks
         slices: int
             Number of chunks to generate
@@ -128,45 +133,50 @@ class Shift(object):
         clean_on_exit: bool, default True
             Clean up chunks on disk when context exits
         """
-        num_docs = len(docs)
-        chunk_range_start = util.linspace(0, num_docs, slices)
-        chunk_range_end = chunk_range_start[1:]
-        chunk_range_end.append(None)
-        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S%f")
 
-        if not directory:
-            user_home = os.path.expanduser("~")
-            directory = os.path.join(user_home, ".shiftmanager", "tmp")
+        # Ensure that files get cleaned up even on raised exception
+        try:
+            num_data = len(data)
+            chunk_range_start = util.linspace(0, num_data, slices)
+            chunk_range_end = chunk_range_start[1:]
+            chunk_range_end.append(None)
+            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S%f")
 
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+            if not directory:
+                user_home = os.path.expanduser("~")
+                directory = os.path.join(user_home, ".shiftmanager", "tmp")
 
-        chunk_files = []
-        range_zipper = zip(chunk_range_start, chunk_range_end)
-        for i, (inclusive, exclusive) in enumerate(range_zipper):
+            if not os.path.exists(directory):
+                os.makedirs(directory)
 
-            # Get either a inc/excl slice, or the slice to the end of the range
-            if exclusive is not None:
-                sliced = docs[inclusive:exclusive]
-            else:
-                sliced = docs[inclusive:]
+            chunk_files = []
+            range_zipper = zip(chunk_range_start, chunk_range_end)
+            for i, (inclusive, exclusive) in enumerate(range_zipper):
 
-            newlined = ""
-            for doc in sliced:
-                newlined = "{}{}\n".format(newlined, json.dumps(doc))
+                # Get either a inc/excl slice,
+                # or the slice to the end of the range
+                if exclusive is not None:
+                    sliced = data[inclusive:exclusive]
+                else:
+                    sliced = data[inclusive:]
 
-            filepath = "{}.gz".format("-".join([stamp, str(i)]))
-            write_path = os.path.join(directory, filepath)
-            current_fp = gzip.open(write_path, 'wb')
-            current_fp.write(newlined)
-            current_fp.close()
-            chunk_files.append(write_path)
+                newlined = ""
+                for doc in sliced:
+                    newlined = "{}{}\n".format(newlined, json.dumps(doc))
 
-        yield chunk_files
+                filepath = "{}.gz".format("-".join([stamp, str(i)]))
+                write_path = os.path.join(directory, filepath)
+                current_fp = gzip.open(write_path, 'wb')
+                current_fp.write(newlined)
+                current_fp.close()
+                chunk_files.append(write_path)
 
-        if clean_on_exit:
-            for filepath in chunk_files:
-                os.remove(filepath)
+            yield stamp, chunk_files
+
+        finally:
+            if clean_on_exit:
+                for filepath in chunk_files:
+                    os.remove(filepath)
 
     @staticmethod
     def random_password(length=64):
@@ -229,16 +239,72 @@ class Shift(object):
         paths_list.sort()
         return {"jsonpaths": paths_list}
 
-    def _get_bucket_from_cache(self, buckpath):
+    def get_s3_connection(self, ordinary_calling_fmt=False):
+        """
+        Get new S3 Connection
+
+        Parameters
+        ----------
+        ordinary_calling_fmt: bool
+            Initialize connection with OrdinaryCallingFormat
+        """
+
+        kwargs = {}
+        # Workaround https://github.com/boto/boto/issues/2836
+        if ordinary_calling_fmt:
+            kwargs["calling_format"] = OrdinaryCallingFormat()
+
+        if self.aws_access_key_id and self.aws_secret_access_key:
+            s3conn = S3Connection(self.aws_access_key_id,
+                                  self.aws_secret_access_key,
+                                  **kwargs)
+        else:
+            s3conn = S3Connection(**kwargs)
+
+        return s3conn
+
+    def _get_bucket_from_cache(self, bpath):
         """Get bucket from cache, or add to cache if does not exist"""
-        if buckpath not in self.bucket_cache:
-            self.bucket_cache[buckpath] = self.s3conn.get_bucket(buckpath)
-        return self.bucket_cache[buckpath]
+        if bpath not in self.bucket_cache:
+            try:
+                self.bucket_cache[bpath] = self.s3conn.get_bucket(bpath)
+            except CertificateError as e:
+                # Addressing https://github.com/boto/boto/issues/2836
+                dot_msg = ("doesn't match either of '*.s3.amazonaws.com',"
+                           " 's3.amazonaws.com'")
+                if dot_msg in e.message:
+                    self.bucket_cache = {}
+                    self.s3conn = self.get_s3_connection(
+                        ordinary_calling_fmt=True)
+                    self.bucket_cache[bpath] = self.s3conn.get_bucket(bpath)
+                else:
+                    raise
+
+        return self.bucket_cache[bpath]
 
     def _execute_and_commit(self, statement):
         """Execute and commit given statement"""
         self.cur.execute(statement)
         self.conn.commit()
+
+    def write_dict_to_key(self, data, key, close=False):
+        """
+        Given a Boto S3 Key, write a given dict to that key as JSON.
+
+        Parameters
+        ----------
+        data: dict
+        key: boto.s3.Key
+        close: bool, default False
+            Close key after write
+        """
+        fp = StringIO()
+        fp.write(unicode(json.dumps(data)))
+        fp.seek(0)
+        key.set_contents_from_file(fp)
+        if close:
+            key.close()
+        return key
 
     def create_user(self, username, password):
         """
@@ -299,33 +365,114 @@ class Shift(object):
 
         self._execute_and_commit(statement)
 
-    def copy_json_to_table(self, bucket, json_iter, table_name, slices=32,
-                           clean_up=True, jsonpaths=None):
+    def copy_json_to_table(self, bucket, keypath, data, jsonpaths, table,
+                           slices=32, clean_up_s3=True, local_path=None,
+                           clean_up_local=True):
         """
-        Given a list of JSON blobs, COPY them to the given `table_name`
+        Given a list of JSON-able dicts, COPY them to the given `table_name`
 
         This function will partition the blobs into `slices` number of files,
-        write them to the s3 `bucket`, create a jsonpaths file, COPY them to
+        write them to the s3 `bucket`, write the jsonpaths file, COPY them to
         the table, then optionally clean up everything in the bucket.
 
         Parameters
         ----------
         bucket: str
             S3 bucket for writes
-        json_iter: iterable
-            Iterable of JSON documents
-        table_name: str
+        keypath: str
+            S3 key path for writes
+        data: iterable of dicts
+            Iterable of JSON-able dicts
+        jsonpaths: dict
+            Redshift jsonpaths file. If None, will autogenerate with
+            alphabetical order
+        table: str
             Table name for COPY
         slices: int
             Number of slices in your cluster. This many files will be generated
             on S3 for efficient COPY.
-        clean_up: bool
+        clean_up_s3: bool
             Clean up S3 bucket after COPY completes
-        jsonpaths: dict
-            Redshift jsonpaths file. If None, will autogenerate with
-            alphabetical order
+        local_path: str
+            Local path to write chunked JSON. Defaults to
+            $HOME/.shiftmanager/tmp/
+        clean_up_local: bool
+            Clean up local chunked JSON after COPY completes.
         """
-        pass
+
+        print("Connecting to S3 bucket {}...".format(bucket))
+        bukkit = self._get_bucket_from_cache(bucket)
+
+        # Keys to clean up
+        s3_sweep = []
+
+        # Ensure S3 cleanup on failure
+        try:
+            with self.chunk_json_slices(data, slices, local_path,
+                                        clean_up_local) \
+                as (stamp, file_paths):
+
+                manifest = {"entries": []}
+
+                print("Writing chunks...")
+                for path in file_paths:
+                    filename = os.path.basename(path)
+                    # Strip leading slash
+                    if keypath[0] == "/":
+                        keypath = keypath[1:]
+
+                    data_keypath = os.path.join(keypath, filename)
+                    data_key = bukkit.new_key(data_keypath)
+                    s3_sweep.append(data_keypath)
+
+                    with open(path, 'rb') as f:
+                        data_key.set_contents_from_file(f)
+
+                    manifest_entry  = {
+                        "url": "s3://{}/{}".format(bukkit.name, data_keypath),
+                        "mandatory": True
+                    }
+                    manifest["entries"].append(manifest_entry)
+                    data_key.close()
+
+                stamped_path = os.path.join(keypath, stamp)
+
+                print("Writing .manifest file...")
+                mfest_kpath = "".join([stamped_path, ".manifest"])
+                mfest_complete_path = "s3://{}/{}".format(
+                    bukkit.name, mfest_kpath)
+                manifest_key = bukkit.new_key(mfest_kpath)
+                self.write_dict_to_key(manifest, manifest_key, close=True)
+                s3_sweep.append(mfest_kpath)
+
+                print("Writing jsonpaths file...")
+                jpaths_kpath = "".join([stamped_path, ".jsonpaths"])
+                jpaths_complete_path = "s3://{}/{}".format(
+                    bukkit.name, jpaths_kpath)
+                jpaths_key = bukkit.new_key(jpaths_kpath)
+                self.write_dict_to_key(jsonpaths, jpaths_key, close=True)
+                s3_sweep.append(jpaths_kpath)
+
+            creds = "aws_access_key_id={};aws_secret_access_key={}".format(
+                self.aws_access_key_id, self.aws_secret_access_key)
+
+            statement = """
+            COPY {table}
+            FROM '{manifest_key}'
+            CREDENTIALS '{creds}'
+            JSON '{jpaths_key}'
+            MANIFEST
+            GZIP
+            TIMEFORMAT 'auto';
+            """.format(table=table, manifest_key=mfest_complete_path,
+                       creds=creds, jpaths_key=jpaths_complete_path)
+
+            print("Performing COPY...")
+            self._execute_and_commit(statement)
+
+        finally:
+            if clean_up_s3:
+                bukkit.delete_keys(s3_sweep)
 
 
 class TableDefinitionStatement(object):

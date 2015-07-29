@@ -28,7 +28,7 @@ def recur_dict(accum, value, parent=None, list_idx=None):
 
     """
     list_idx = list_idx or 0
-    parent = parent or ''
+    parent = parent or '$'
 
     if isinstance(value, dict):
         for k, v in value.items():
