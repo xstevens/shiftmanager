@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import math
+
 def recur_dict(accum, value, parent=None, list_idx=None):
     """
     Recurse through the dict `value` and update `accum` for new fields.
@@ -42,3 +44,15 @@ def recur_dict(accum, value, parent=None, list_idx=None):
         return accum
 
     return accum
+
+def linspace(start, stop, num):
+    """Quick linspace-ish integer generator for chunking"""
+    step = (stop - start)/float(num)
+    res = [start]
+    accum = start
+    for i in range(1, num, 1):
+        accum = accum + step
+        if accum > stop:
+            break
+        res.append(int(math.floor(accum)))
+    return res

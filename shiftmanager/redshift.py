@@ -1,12 +1,19 @@
 #!/usr/bin/env python
 
+from __future__ import division, print_function
+
 from contextlib import closing, contextmanager
+import datetime
+import gzip
 import json
 import itertools
+import math
 import os
+import os.path
 import random
 import string
 from subprocess import check_output
+import tempfile
 
 from boto.s3.connection import S3Connection
 import psycopg2
@@ -76,7 +83,7 @@ class Shift(object):
 
     @staticmethod
     @contextmanager
-    def redshift_transaction(self, database=None, user=None, password=None,
+    def redshift_transaction(database=None, user=None, password=None,
                              host=None, port=5439):
         """
         Helper function for wrapping a connection in a context block
@@ -102,6 +109,64 @@ class Shift(object):
             yield conn, cur
 
             conn.commit()
+
+    @staticmethod
+    @contextmanager
+    def chunk_json_slices(docs, slices, directory=None, clean_on_exit=True):
+        """
+        Given an iterator of dicts, chunk them into `slices` and write to
+        temp files on disk. Clean up when leaving scope
+
+        Parameters
+        ----------
+        docs: iter of dicts
+            Iterable of dictionaries to be serialized to chunks
+        slices: int
+            Number of chunks to generate
+        dir: str
+            Dir to write chunks to. Will default to $HOME/.shiftmanager/tmp/
+        clean_on_exit: bool, default True
+            Clean up chunks on disk when context exits
+        """
+        num_docs = len(docs)
+        chunk_range_start = util.linspace(0, num_docs, slices)
+        chunk_range_end = chunk_range_start[1:]
+        chunk_range_end.append(None)
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S%f")
+
+        if not directory:
+            user_home = os.path.expanduser("~")
+            directory = os.path.join(user_home, ".shiftmanager", "tmp")
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        chunk_files = []
+        range_zipper = zip(chunk_range_start, chunk_range_end)
+        for i, (inclusive, exclusive) in enumerate(range_zipper):
+
+            # Get either a inc/excl slice, or the slice to the end of the range
+            if exclusive is not None:
+                sliced = docs[inclusive:exclusive]
+            else:
+                sliced = docs[inclusive:]
+
+            newlined = ""
+            for doc in sliced:
+                newlined = "{}{}\n".format(newlined, json.dumps(doc))
+
+            filepath = "{}.gz".format("-".join([stamp, str(i)]))
+            write_path = os.path.join(directory, filepath)
+            current_fp = gzip.open(write_path, 'wb')
+            current_fp.write(newlined)
+            current_fp.close()
+            chunk_files.append(write_path)
+
+        yield chunk_files
+
+        if clean_on_exit:
+            for filepath in chunk_files:
+                os.remove(filepath)
 
     @staticmethod
     def random_password(length=64):

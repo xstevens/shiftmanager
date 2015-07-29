@@ -6,6 +6,12 @@ Redshift tests
 Test Runner: PyTest
 """
 
+from contextlib import contextmanager
+import gzip
+import json
+import os
+import shutil
+
 from mock import MagicMock
 import pytest
 
@@ -29,6 +35,20 @@ def shift(monkeypatch, mocks):
                         lambda *args, **kwargs: mocks)
     shift = rs.Shift("", "", "", "", "", "", connect_s3=False)
     return shift
+
+
+@contextmanager
+def temp_test_directory():
+    try:
+        user_home = os.path.expanduser("~")
+        directory = os.path.join(user_home, ".shiftmanager", "test")
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        yield directory
+
+    finally:
+        shutil.rmtree(directory)
 
 
 def assert_execute(shift, expected):
@@ -63,6 +83,35 @@ def test_jsonpaths(shift):
     expected_2 = {"jsonpaths": ["['a']['b'][1]", "['one'][1]"]}
     assert expected_2 == shift.gen_jsonpaths(test_dict_2, 1)
 
+def chunk_checker(file_paths):
+    """Ensure that we wrote and can read all 16 integers"""
+    expected_numbers = range(1, 17, 1)
+    result_numbers = []
+    for filepath in file_paths:
+        with gzip.open(filepath, 'rb') as f:
+            res = [json.loads(x)["a"] for x in f.read().split("\n")
+                   if x != ""]
+            result_numbers.extend(res)
+
+    assert expected_numbers == result_numbers
+
+
+def test_chunk_json_slices(shift):
+
+    docs = [{"a": 1}, {"a": 2}, {"a": 3}, {"a": 4},
+            {"a": 5}, {"a": 6}, {"a": 7}, {"a": 8},
+            {"a": 9}, {"a": 10}, {"a": 11}, {"a": 12},
+            {"a": 13}, {"a": 14}, {"a": 15}, {"a": 16}]
+
+    with temp_test_directory() as dpath:
+        for slices in range(1, 19, 1):
+            with shift.chunk_json_slices(docs, slices, dpath) as file_paths:
+                assert len(file_paths) == slices
+                chunk_checker(file_paths)
+
+            with shift.chunk_json_slices(docs, slices, dpath) as file_paths:
+                assert len(file_paths) == slices
+                chunk_checker(file_paths)
 
 def test_create_user(shift):
 
