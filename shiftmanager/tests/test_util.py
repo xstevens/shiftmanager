@@ -6,6 +6,7 @@ Util tests
 
 import shiftmanager.util as util
 
+
 def test_recur_dict():
     test_1 = {"one": 1}
     assert util.recur_dict(set(), test_1) == set(["$['one']"])

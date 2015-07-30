@@ -2,6 +2,7 @@
 
 import math
 
+
 def recur_dict(accum, value, parent=None, list_idx=None):
     """
     Recurse through the dict `value` and update `accum` for new fields.
@@ -44,6 +45,7 @@ def recur_dict(accum, value, parent=None, list_idx=None):
         return accum
 
     return accum
+
 
 def linspace(start, stop, num):
     """Quick linspace-ish integer generator for chunking"""

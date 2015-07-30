@@ -61,10 +61,10 @@ def json_data():
             {"a": 13}, {"a": 14}, {"a": 15}, {"a": 16}]
     return data
 
+
 @pytest.fixture
 def shift(monkeypatch, mock_redshift, mock_s3):
     """Patch psycopg2 with connection mocks, return conn"""
-    boto_mock = MagicMock()
     monkeypatch.setattr('psycopg2.connect',
                         lambda *args, **kwargs: mock_redshift)
     monkeypatch.setattr('shiftmanager.redshift.Shift.get_s3_connection',
@@ -120,13 +120,15 @@ def test_jsonpaths(shift):
     expected_2 = {"jsonpaths": ["$['a']['b'][1]", "$['one'][1]"]}
     assert expected_2 == shift.gen_jsonpaths(test_dict_2, 1)
 
+
 def chunk_checker(file_paths):
     """Ensure that we wrote and can read all 16 integers"""
-    expected_numbers = range(1, 17, 1)
+    expected_numbers = list(range(1, 17, 1))
     result_numbers = []
     for filepath in file_paths:
         with gzip.open(filepath, 'rb') as f:
-            res = [json.loads(x)["a"] for x in f.read().split("\n")
+            decoded = f.read().decode("utf-8")
+            res = [json.loads(x)["a"] for x in decoded.split("\n")
                    if x != ""]
             result_numbers.extend(res)
 
@@ -138,13 +140,18 @@ def test_chunk_json_slices(shift, json_data):
     data = json_data
     with temp_test_directory() as dpath:
         for slices in range(1, 19, 1):
-            with shift.chunk_json_slices(data, slices, dpath) as (stamp, paths):
+            with shift.chunk_json_slices(data, slices, dpath) \
+                    as (stamp, paths):
+
                 assert len(paths) == slices
                 chunk_checker(paths)
 
-            with shift.chunk_json_slices(data, slices, dpath) as (stamp, paths):
+            with shift.chunk_json_slices(data, slices, dpath) \
+                    as (stamp, paths):
+
                 assert len(paths) == slices
                 chunk_checker(paths)
+
 
 def test_create_user(shift):
 
@@ -213,12 +220,14 @@ def check_key_calls(s3keys, slices):
         val.set_contents_from_file.assert_called_once_with(ANY)
         val.close.assert_called_once_with()
 
+
 def get_manifest_and_jsonpaths_keys(s3keys):
     manifest = ["s3://com.simple.mock/{}".format(x)
                 for x in s3keys.keys() if "manifest" in x][0]
     jsonpaths = ["s3://com.simple.mock/{}".format(x)
                  for x in s3keys.keys() if "jsonpaths" in x][0]
     return manifest, jsonpaths
+
 
 def test_copy_to_json(shift, json_data):
 
@@ -236,7 +245,7 @@ def test_copy_to_json(shift, json_data):
     bukkit = shift.s3conn.get_bucket("foo")
     # 5 slices, one manifest, one jsonpaths
     check_key_calls(bukkit.s3keys, 5)
-    manifest, jsonpaths = get_manifest_and_jsonpaths_keys(bukkit.s3keys)
+    mfest, jpaths = get_manifest_and_jsonpaths_keys(bukkit.s3keys)
 
     expect_creds = "aws_access_key_id={};aws_secret_access_key={}".format(
         "access_key", "secret_key")
@@ -248,8 +257,8 @@ def test_copy_to_json(shift, json_data):
             MANIFEST
             GZIP
             TIMEFORMAT 'auto';
-            """.format(manifest=manifest, creds=expect_creds,
-                       jsonpaths=jsonpaths)
+            """.format(manifest=mfest, creds=expect_creds,
+                       jsonpaths=jpaths)
 
     assert_execute(shift, expected)
 

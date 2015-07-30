@@ -1,24 +1,20 @@
 #!/usr/bin/env python
 
-from __future__ import division, print_function
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
 
 from contextlib import closing, contextmanager
 import datetime
 import gzip
-import json
+from io import StringIO
 import itertools
-import math
+import json
 import os
 import os.path
 import random
 from ssl import CertificateError
 import string
-try:
-    from io import StringIO
-except ImportError:
-    from cStringIO import StringIO
 from subprocess import check_output
-import tempfile
 
 from boto.s3.connection import S3Connection
 from boto.s3.connection import OrdinaryCallingFormat
@@ -67,9 +63,9 @@ class Shift(object):
         """
 
         self.aws_access_key_id = aws_access_key_id or \
-                                 os.environ.get('AWS_ACCESS_KEY_ID')
+            os.environ.get('AWS_ACCESS_KEY_ID')
         self.aws_secret_access_key = aws_secret_access_key or \
-                                 os.environ.get('AWS_SECRET_ACCESS_KEY')
+            os.environ.get('AWS_SECRET_ACCESS_KEY')
         self.s3conn = self.get_s3_connection()
 
         database = database or os.environ.get('PGDATABASE')
@@ -150,7 +146,7 @@ class Shift(object):
                 os.makedirs(directory)
 
             chunk_files = []
-            range_zipper = zip(chunk_range_start, chunk_range_end)
+            range_zipper = list(zip(chunk_range_start, chunk_range_end))
             for i, (inclusive, exclusive) in enumerate(range_zipper):
 
                 # Get either a inc/excl slice,
@@ -167,7 +163,7 @@ class Shift(object):
                 filepath = "{}.gz".format("-".join([stamp, str(i)]))
                 write_path = os.path.join(directory, filepath)
                 current_fp = gzip.open(write_path, 'wb')
-                current_fp.write(newlined)
+                current_fp.write(newlined.encode("utf-8"))
                 current_fp.close()
                 chunk_files.append(write_path)
 
@@ -196,14 +192,14 @@ class Shift(object):
         invalid_chars = r'''\/'"@ '''
         valid_chars_set = set(
             string.digits +
-            string.letters +
+            string.ascii_letters +
             string.punctuation
         ) - set(invalid_chars)
         valid_chars = list(valid_chars_set)
         chars = [rand.choice(string.ascii_uppercase),
                  rand.choice(string.ascii_lowercase),
                  rand.choice(string.digits)]
-        chars += [rand.choice(valid_chars) for x in xrange(length - 3)]
+        chars += [rand.choice(valid_chars) for x in range(length - 3)]
         rand.shuffle(chars)
         return ''.join(chars)
 
@@ -299,7 +295,7 @@ class Shift(object):
             Close key after write
         """
         fp = StringIO()
-        fp.write(unicode(json.dumps(data)))
+        fp.write(json.dumps(data, ensure_ascii=False))
         fp.seek(0)
         key.set_contents_from_file(fp)
         if close:
@@ -321,7 +317,6 @@ class Shift(object):
 
         self._execute_and_commit(statement)
 
-
     def set_password(self, username, password):
         """
         Set a user's password.
@@ -333,7 +328,6 @@ class Shift(object):
         """.format(username, password)
 
         self._execute_and_commit(statement)
-
 
     def dedupe(self, table):
         """
@@ -410,7 +404,7 @@ class Shift(object):
         try:
             with self.chunk_json_slices(data, slices, local_path,
                                         clean_up_local) \
-                as (stamp, file_paths):
+                    as (stamp, file_paths):
 
                 manifest = {"entries": []}
 
@@ -428,7 +422,7 @@ class Shift(object):
                     with open(path, 'rb') as f:
                         data_key.set_contents_from_file(f)
 
-                    manifest_entry  = {
+                    manifest_entry = {
                         "url": "s3://{}/{}".format(bukkit.name, data_keypath),
                         "mandatory": True
                     }
@@ -437,21 +431,20 @@ class Shift(object):
 
                 stamped_path = os.path.join(keypath, stamp)
 
+                def single_dict_write(ext, single_data):
+                    kpath = "".join([stamped_path, ext])
+                    complete_path = "s3://{}/{}".format(bukkit.name, kpath)
+                    key = bukkit.new_key(kpath)
+                    self.write_dict_to_key(single_data, key, close=True)
+                    s3_sweep.append(kpath)
+                    return complete_path
+
                 print("Writing .manifest file...")
-                mfest_kpath = "".join([stamped_path, ".manifest"])
-                mfest_complete_path = "s3://{}/{}".format(
-                    bukkit.name, mfest_kpath)
-                manifest_key = bukkit.new_key(mfest_kpath)
-                self.write_dict_to_key(manifest, manifest_key, close=True)
-                s3_sweep.append(mfest_kpath)
+                mfest_complete_path = single_dict_write(".manifest", manifest)
 
                 print("Writing jsonpaths file...")
-                jpaths_kpath = "".join([stamped_path, ".jsonpaths"])
-                jpaths_complete_path = "s3://{}/{}".format(
-                    bukkit.name, jpaths_kpath)
-                jpaths_key = bukkit.new_key(jpaths_kpath)
-                self.write_dict_to_key(jsonpaths, jpaths_key, close=True)
-                s3_sweep.append(jpaths_kpath)
+                jpaths_complete_path = single_dict_write(".jsonpaths",
+                                                         jsonpaths)
 
             creds = "aws_access_key_id={};aws_secret_access_key={}".format(
                 self.aws_access_key_id, self.aws_secret_access_key)
