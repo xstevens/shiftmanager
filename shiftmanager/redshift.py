@@ -6,7 +6,6 @@ from __future__ import (absolute_import, division, print_function,
 from contextlib import closing, contextmanager
 import datetime
 import gzip
-from io import StringIO
 import itertools
 import json
 import os
@@ -29,7 +28,7 @@ DISTSTYLES_BY_INDEX = {
 
 
 class Redshift(S3):
-    """Interface to Redshift and S3"""
+    """Interface to Redshift"""
 
     def __init__(self, aws_access_key_id=None, aws_secret_access_key=None,
                  database=None, user=None, password=None, host=None,
@@ -326,7 +325,7 @@ class Redshift(S3):
         # Ensure S3 cleanup on failure
         try:
             with self.chunked_json_slices(data, slices, local_path,
-                                        clean_up_local) \
+                                          clean_up_local) \
                     as (stamp, file_paths):
 
                 manifest = {"entries": []}
@@ -495,6 +494,7 @@ class TableDefinitionStatement(object):
 
         return '\n'.join(all_lines).format(**names)
 
+
 def random_password():
     """Helper function for password generation"""
-    return Shift.random_password()
+    return Redshift.random_password()

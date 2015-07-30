@@ -9,6 +9,7 @@ def memoize(f):
     Memoization decorator for single argument methods.
     """
     memo = {}
+
     @wraps(f)
     def wrapper(cls, key):
         val = memo.get(key)
