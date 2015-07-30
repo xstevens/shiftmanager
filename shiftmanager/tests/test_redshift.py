@@ -44,6 +44,10 @@ def mock_s3():
         def delete_keys(self, keys):
             self.recently_deleted_keys = keys
 
+        def reset(self):
+            self.s3keys = {}
+            self.recently_deleted_keys = []
+
     mock_S3 = MagicMock()
     mock_S3.get_bucket.return_value = MockBucket()
     return mock_S3
@@ -210,8 +214,10 @@ def check_key_calls(s3keys, slices):
         val.close.assert_called_once_with()
 
 def get_manifest_and_jsonpaths_keys(s3keys):
-    manifest = [x for x in s3keys.keys() if "manifest" in x][0]
-    jsonpaths = [x for x in s3keys.keys() if "jsonpaths" in x][0]
+    manifest = ["s3://com.simple.mock/{}".format(x)
+                for x in s3keys.keys() if "manifest" in x][0]
+    jsonpaths = ["s3://com.simple.mock/{}".format(x)
+                 for x in s3keys.keys() if "jsonpaths" in x][0]
     return manifest, jsonpaths
 
 def test_copy_to_json(shift, json_data):
@@ -232,12 +238,52 @@ def test_copy_to_json(shift, json_data):
     check_key_calls(bukkit.s3keys, 5)
     manifest, jsonpaths = get_manifest_and_jsonpaths_keys(bukkit.s3keys)
 
+    expect_creds = "aws_access_key_id={};aws_secret_access_key={}".format(
+        "access_key", "secret_key")
     expected = """
-        COPY foo_table
-        FROM '{}'
-        CREDENTIALS
-        JSON '{jpaths_key}'
-        MANIFEST
-        GZIP
-        TIMEFORMAT 'auto';
-        """
+            COPY foo_table
+            FROM '{manifest}'
+            CREDENTIALS '{creds}'
+            JSON '{jsonpaths}'
+            MANIFEST
+            GZIP
+            TIMEFORMAT 'auto';
+            """.format(manifest=manifest, creds=expect_creds,
+                       jsonpaths=jsonpaths)
+
+    assert_execute(shift, expected)
+
+    # Did we clean up?
+    assert set(bukkit.recently_deleted_keys) == set(bukkit.s3keys.keys())
+
+    # Without cleanup
+    bukkit.reset()
+    shift.copy_json_to_table("com.simple.mock",
+                             "tmp/tests/",
+                             json_data,
+                             jsonpaths,
+                             "foo_table",
+                             slices=4,
+                             clean_up_s3=False)
+
+    bukkit = shift.s3conn.get_bucket("foo")
+    # 4 slices
+    check_key_calls(bukkit.s3keys, 4)
+
+    # Should not have cleaned up S3
+    assert bukkit.recently_deleted_keys == []
+
+    # Do not cleanup local
+    bukkit.reset()
+    with temp_test_directory() as dpath:
+        shift.copy_json_to_table("com.simple.mock",
+                                 "tmp/tests/",
+                                 json_data,
+                                 jsonpaths,
+                                 "foo_table",
+                                 slices=10,
+                                 local_path=dpath,
+                                 clean_up_local=False)
+        bukkit = shift.s3conn.get_bucket("foo")
+        check_key_calls(bukkit.s3keys, 10)
+        assert len(os.listdir(dpath)) == 10
