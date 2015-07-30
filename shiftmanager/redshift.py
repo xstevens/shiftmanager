@@ -571,3 +571,7 @@ class TableDefinitionStatement(object):
             self.grants)
 
         return '\n'.join(all_lines).format(**names)
+
+def random_password():
+    """Helper function for password generation"""
+    return Shift.random_password()
