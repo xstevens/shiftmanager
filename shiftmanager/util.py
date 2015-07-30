@@ -1,6 +1,22 @@
 #!/usr/bin/env python
 
+from functools import wraps
 import math
+
+
+def memoize(f):
+    """
+    Memoization decorator for single argument methods.
+    """
+    memo = {}
+    @wraps(f)
+    def wrapper(cls, key):
+        val = memo.get(key)
+        if not val:
+            val = memo[key] = f(cls, key)
+        return val
+
+    return wrapper
 
 
 def recur_dict(accum, value, parent=None, list_idx=None):
@@ -21,8 +37,8 @@ def recur_dict(accum, value, parent=None, list_idx=None):
 
     Example
     -------
-    res = recur_dict({"one": 1, "two": {"three": [1, 2, 3]}},
-                     list_idx=0)
+    >>> res = recur_dict({"one": 1, "two": {"three": [1, 2, 3]}},
+                         list_idx=0)
     >>> res
     set(["['one']", "['two']['three'][0]"])
 

@@ -11,6 +11,7 @@ import gzip
 import json
 import os
 import shutil
+import tempfile
 
 from mock import MagicMock, ANY
 import pytest
@@ -67,21 +68,17 @@ def shift(monkeypatch, mock_redshift, mock_s3):
     """Patch psycopg2 with connection mocks, return conn"""
     monkeypatch.setattr('psycopg2.connect',
                         lambda *args, **kwargs: mock_redshift)
-    monkeypatch.setattr('shiftmanager.redshift.Shift.get_s3_connection',
+    monkeypatch.setattr('shiftmanager.s3.S3.get_s3_connection',
                         lambda *args, **kwargs: mock_s3)
-    shift = rs.Shift("access_key", "secret_key", "", "", "", "",
-                     connect_s3=False)
+    shift = rs.Redshift("access_key", "secret_key", "", "", "", "",
+                        connect_s3=False)
     return shift
 
 
 @contextmanager
 def temp_test_directory():
     try:
-        user_home = os.path.expanduser("~")
-        directory = os.path.join(user_home, ".shiftmanager", "test")
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
+        directory = tempfile.mkdtemp()
         yield directory
 
     finally:
@@ -91,15 +88,6 @@ def temp_test_directory():
 def assert_execute(shift, expected):
     """Helper for asserting an executed SQL statement on mock connection"""
     shift.conn.cursor().execute.assert_called_with(expected)
-
-
-def test_redshift_transaction(shift):
-
-    with shift.redshift_transaction("") as (conn, cur):
-        pass
-
-    shift.cur.execute.assert_called_once_with("SET search_path = public")
-    shift.conn.commit.assert_called_with()
 
 
 def test_random_password(shift):
@@ -140,13 +128,13 @@ def test_chunk_json_slices(shift, json_data):
     data = json_data
     with temp_test_directory() as dpath:
         for slices in range(1, 19, 1):
-            with shift.chunk_json_slices(data, slices, dpath) \
+            with shift.chunked_json_slices(data, slices, dpath) \
                     as (stamp, paths):
 
                 assert len(paths) == slices
                 chunk_checker(paths)
 
-            with shift.chunk_json_slices(data, slices, dpath) \
+            with shift.chunked_json_slices(data, slices, dpath) \
                     as (stamp, paths):
 
                 assert len(paths) == slices

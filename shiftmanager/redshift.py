@@ -12,15 +12,13 @@ import json
 import os
 import os.path
 import random
-from ssl import CertificateError
 import string
 from subprocess import check_output
 
-from boto.s3.connection import S3Connection
-from boto.s3.connection import OrdinaryCallingFormat
 import psycopg2
 
 import shiftmanager.util as util
+from shiftmanager.s3 import S3
 
 # Redshift distribution styles
 DISTSTYLES_BY_INDEX = {
@@ -30,7 +28,7 @@ DISTSTYLES_BY_INDEX = {
 }
 
 
-class Shift(object):
+class Redshift(S3):
     """Interface to Redshift and S3"""
 
     def __init__(self, aws_access_key_id=None, aws_secret_access_key=None,
@@ -62,10 +60,7 @@ class Shift(object):
             Make S3 connection. If False, Redshift methods will still work
         """
 
-        self.aws_access_key_id = aws_access_key_id or \
-            os.environ.get('AWS_ACCESS_KEY_ID')
-        self.aws_secret_access_key = aws_secret_access_key or \
-            os.environ.get('AWS_SECRET_ACCESS_KEY')
+        self.set_aws_credentials(aws_access_key_id, aws_secret_access_key)
         self.s3conn = self.get_s3_connection()
 
         database = database or os.environ.get('PGDATABASE')
@@ -80,43 +75,26 @@ class Shift(object):
                                      port=port)
 
         self.cur = self.conn.cursor()
-        self.bucket_cache = {}
 
-    @staticmethod
-    @contextmanager
-    def redshift_transaction(database=None, user=None, password=None,
-                             host=None, port=5439):
+    def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key):
         """
-        Helper function for wrapping a connection in a context block
+        Set AWS credentials. These will be required for any methods that
+        need interaction with S3
 
         Parameters
         ----------
-        database: str
-        user: str
-        password: str
-        host: str
-        port: int
+        aws_access_key_id: str
+        aws_secret_access_key: str
         """
-        database = database or "public"
-        with closing(psycopg2.connect(database=database, user=user,
-                                      password=password, host=host,
-                                      port=port)) as conn:
-            cur = conn.cursor()
-
-            # Make sure we create tables in the `database` schema
-            cur.execute("SET search_path = {}".format(database))
-
-            # Return the connection and cursor to the calling function
-            yield conn, cur
-
-            conn.commit()
+        self.aws_access_key_id = aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key
 
     @staticmethod
     @contextmanager
-    def chunk_json_slices(data, slices, directory=None, clean_on_exit=True):
+    def chunked_json_slices(data, slices, directory=None, clean_on_exit=True):
         """
         Given an iterator of dicts, chunk them into `slices` and write to
-        temp files on disk. Clean up when leaving scope
+        temp files on disk. Clean up when leaving scope.
 
         Parameters
         ----------
@@ -128,6 +106,13 @@ class Shift(object):
             Dir to write chunks to. Will default to $HOME/.shiftmanager/tmp/
         clean_on_exit: bool, default True
             Clean up chunks on disk when context exits
+
+        Returns
+        -------
+        stamp: str
+            Timestamp that prepends the filenames of chunks written to disc
+        chunk_files: list
+            List of filenames
         """
 
         # Ensure that files get cleaned up even on raised exception
@@ -235,72 +220,10 @@ class Shift(object):
         paths_list.sort()
         return {"jsonpaths": paths_list}
 
-    def get_s3_connection(self, ordinary_calling_fmt=False):
-        """
-        Get new S3 Connection
-
-        Parameters
-        ----------
-        ordinary_calling_fmt: bool
-            Initialize connection with OrdinaryCallingFormat
-        """
-
-        kwargs = {}
-        # Workaround https://github.com/boto/boto/issues/2836
-        if ordinary_calling_fmt:
-            kwargs["calling_format"] = OrdinaryCallingFormat()
-
-        if self.aws_access_key_id and self.aws_secret_access_key:
-            s3conn = S3Connection(self.aws_access_key_id,
-                                  self.aws_secret_access_key,
-                                  **kwargs)
-        else:
-            s3conn = S3Connection(**kwargs)
-
-        return s3conn
-
-    def _get_bucket_from_cache(self, bpath):
-        """Get bucket from cache, or add to cache if does not exist"""
-        if bpath not in self.bucket_cache:
-            try:
-                self.bucket_cache[bpath] = self.s3conn.get_bucket(bpath)
-            except CertificateError as e:
-                # Addressing https://github.com/boto/boto/issues/2836
-                dot_msg = ("doesn't match either of '*.s3.amazonaws.com',"
-                           " 's3.amazonaws.com'")
-                if dot_msg in e.message:
-                    self.bucket_cache = {}
-                    self.s3conn = self.get_s3_connection(
-                        ordinary_calling_fmt=True)
-                    self.bucket_cache[bpath] = self.s3conn.get_bucket(bpath)
-                else:
-                    raise
-
-        return self.bucket_cache[bpath]
-
     def _execute_and_commit(self, statement):
         """Execute and commit given statement"""
         self.cur.execute(statement)
         self.conn.commit()
-
-    def write_dict_to_key(self, data, key, close=False):
-        """
-        Given a Boto S3 Key, write a given dict to that key as JSON.
-
-        Parameters
-        ----------
-        data: dict
-        key: boto.s3.Key
-        close: bool, default False
-            Close key after write
-        """
-        fp = StringIO()
-        fp.write(json.dumps(data, ensure_ascii=False))
-        fp.seek(0)
-        key.set_contents_from_file(fp)
-        if close:
-            key.close()
-        return key
 
     def create_user(self, username, password):
         """
@@ -395,14 +318,14 @@ class Shift(object):
         """
 
         print("Connecting to S3 bucket {}...".format(bucket))
-        bukkit = self._get_bucket_from_cache(bucket)
+        bukkit = self.get_bucket(bucket)
 
         # Keys to clean up
         s3_sweep = []
 
         # Ensure S3 cleanup on failure
         try:
-            with self.chunk_json_slices(data, slices, local_path,
+            with self.chunked_json_slices(data, slices, local_path,
                                         clean_up_local) \
                     as (stamp, file_paths):
 
