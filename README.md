@@ -26,16 +26,20 @@ We distribute Redshift credentials to new users via a document on Google Drive.
 
 Fire up your favorite Python interpreter (`ipython` recommended), but make sure you have environment variables `PGUSER` and `PGPASSWORD` set for the process, probably via `chpst` or [`envcrypt`](https://github.banksimple.com/analytics/sup/blob/master/dev-setup.md#credentials). Your session will look something like:
 ```python
+>>> dev = "dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com"
+>>> prod = "prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com"
 >>> redshift_username = 'newuser'
 >>> gdrive_username = 'newuser' # as in newuser@simple.com
 
->>> import shiftmanager as manage
->>> password = manage.random_password()
+>>> import shiftmanager as sm
+>>> devshift = sm.redshift.Shift(host=dev)
+>>> prodshift = sm.redshift.Shift(host=prod)
+>>> password = shift.random_password()
 
->>> manage.create_user('dev', redshift_username, password)
->>> manage.create_user('prod', redshift_username, password)
+>>> devshift.create_user(redshift_username, password)
+>>> prodshift.create_user(redshift_username, password)
 
->>> manage.post_user_creds_to_gdrive(gdrive_username, redshift_username, password)
+>>> sm.creds.post_user_creds_to_gdrive(gdrive_username, redshift_username, password)
 Successfully created creds for user 'newuser' and sent a notification email.
 ```
 
@@ -53,17 +57,21 @@ When a service needs to access Redshift, we create accounts under the name of th
 
 As in the previous section, fire up a Python interpreter with `PGUSER` and `PGPASSWORD` set:
 ```python
+>>> dev = "dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com"
+>>> prod = "prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com"
 >>> service_name = 'newservice'
 
->>> import shiftmanager as manage
->>> devpass = manage.random_password()
->>> prodpass = manage.random_password()
+>>> import shiftmanager as sm
+>>> devshift = sm.redshift.Shift(host=dev)
+>>> prodshift = sm.redshift.Shift(host=prod)
+>>> devpass = devshift.random_password()
+>>> prodpass = prodshift.random_password()
 
->>> manage.create_user('dev', service_name, devpass)
->>> manage.create_user('prod', service_name, prodpass)
+>>> devshift.create_user(service_name, devpass)
+>>> prodshift.create_user(service_name, prodpass)
 
->>> cleartext = manage.text_for_service_cred_upload_request(service_name, devpass, prodpass)
->>> ciphertext = manage.encrypted_for_s3_uploaders(cleartext)
+>>> cleartext = sm.creds.text_for_service_cred_upload_request(service_name, devpass, prodpass)
+>>> ciphertext = sm.creds.encrypted_for_s3_uploaders(cleartext)
 Encypting for the following uids:
     Simple Security <security@simple.com>
     Matt Moyer <mattmoyer@gmail.com>

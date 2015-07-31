@@ -167,8 +167,8 @@ def post_user_creds_to_gdrive(gdrive_username, redshift_username, password):
         emailMessage="",
     ).execute()
 
-    print ("Successfully created creds for user '{0}' "
-           "and sent a notification email.").format(redshift_username)
+    print("Successfully created creds for user '{0}' "
+          "and sent a notification email.").format(redshift_username)
 
 
 def encrypted_for_s3_uploaders(text):

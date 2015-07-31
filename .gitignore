@@ -58,3 +58,4 @@ docs/_build/
 # Virtual environments
 venv/
 .venv/
+.py3env
