@@ -285,3 +285,13 @@ def test_copy_to_json(shift, json_data):
         bukkit = shift.s3conn.get_bucket("foo")
         check_key_calls(bukkit.s3keys, 10)
         assert len(os.listdir(dpath)) == 10
+
+def test_throws_s3_error(monkeypatch, mock_redshift, mock_s3):
+    monkeypatch.setattr('psycopg2.connect',
+                        lambda *args, **kwargs: mock_redshift)
+    monkeypatch.setattr('shiftmanager.s3.S3.get_s3_connection',
+                        lambda *args, **kwargs: mock_s3)
+    shift = rs.Redshift()
+
+    with pytest.raises(rs.S3ConnectionError):
+        shift.copy_json_to_table("foo", "foo", {}, {}, "foo")
