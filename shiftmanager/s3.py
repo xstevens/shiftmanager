@@ -16,6 +16,19 @@ from shiftmanager.util import memoize
 class S3(object):
     """S3 Interface Class"""
 
+    def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key):
+        """
+        Set AWS credentials. These will be required for any methods that
+        need interaction with S3
+
+        Parameters
+        ----------
+        aws_access_key_id: str
+        aws_secret_access_key: str
+        """
+        self.aws_access_key_id = aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key
+
     def get_s3_connection(self, ordinary_calling_fmt=False):
         """
         Get new S3 Connection

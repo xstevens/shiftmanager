@@ -5,6 +5,7 @@ from __future__ import (absolute_import, division, print_function,
 
 from contextlib import closing, contextmanager
 import datetime
+from functools import wraps
 import gzip
 import itertools
 import json
@@ -27,24 +28,39 @@ DISTSTYLES_BY_INDEX = {
 }
 
 
+def check_s3_connection(f):
+    """
+    Check class for S3 connection, try to connect if one is not present.
+    """
+    @wraps(f)
+    def wrapper(cls, *args, **kwargs):
+        if not cls.s3conn:
+            print("Connecting to S3."
+                  "\nIf you have not set your credentials in"
+                  " the environment or on the class, you can use the "
+                  "set_aws_credentials method")
+            cls.s3conn = cls.get_s3_connection(cls.aws_access_key_id,
+                                               cls.aws_secret_access_key)
+        return f(cls, *args, **kwargs)
+    return wrapper
+
+
 class Redshift(S3):
     """Interface to Redshift"""
 
-    def __init__(self, aws_access_key_id=None, aws_secret_access_key=None,
-                 database=None, user=None, password=None, host=None,
-                 port=5439, connect_s3=True):
+    def __init__(self, database=None, user=None, password=None, host=None,
+                 port=5439, aws_access_key_id=None,
+                 aws_secret_access_key=None,):
         """
-        The entry point for all Redshift and S3 operations in Shiftmanager.
+        The entry point for all Redshift operations in Shiftmanager.
         This class will default to environment params for all arguments.
 
-        The aws keys are not required if you have environmental params set
-        for boto to pick up:
+        For methods requiring S3,  aws keys are not required if you have
+        environmental params set for boto to pick up:
         http://boto.readthedocs.org/en/latest/s3_tut.html#creating-a-connection
 
         Parameters
         ----------
-        aws_access_key_id: str
-        aws_secret_access_key: str
         database: str
             envvar equivalent: PGDATABASE
         user: str
@@ -55,12 +71,12 @@ class Redshift(S3):
             envvar equivalent: PGHOST
         port: int
             envvar equivalent: PGPORT
-        connect_s3: bool
-            Make S3 connection. If False, Redshift methods will still work
+        aws_access_key_id: str
+        aws_secret_access_key: str
         """
 
         self.set_aws_credentials(aws_access_key_id, aws_secret_access_key)
-        self.s3conn = self.get_s3_connection()
+        self.s3conn = None
 
         database = database or os.environ.get('PGDATABASE')
         user = user or os.environ.get('PGUSER')
@@ -74,19 +90,6 @@ class Redshift(S3):
                                      port=port)
 
         self.cur = self.conn.cursor()
-
-    def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key):
-        """
-        Set AWS credentials. These will be required for any methods that
-        need interaction with S3
-
-        Parameters
-        ----------
-        aws_access_key_id: str
-        aws_secret_access_key: str
-        """
-        self.aws_access_key_id = aws_access_key_id
-        self.aws_secret_access_key = aws_secret_access_key
 
     @staticmethod
     @contextmanager
@@ -281,6 +284,7 @@ class Redshift(S3):
 
         self._execute_and_commit(statement)
 
+    @check_s3_connection
     def copy_json_to_table(self, bucket, keypath, data, jsonpaths, table,
                            slices=32, clean_up_s3=True, local_path=None,
                            clean_up_local=True):
@@ -316,7 +320,7 @@ class Redshift(S3):
             Clean up local chunked JSON after COPY completes.
         """
 
-        print("Connecting to S3 bucket {}...".format(bucket))
+        print("Fetching S3 bucket {}...".format(bucket))
         bukkit = self.get_bucket(bucket)
 
         # Keys to clean up

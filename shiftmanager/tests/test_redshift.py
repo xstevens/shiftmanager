@@ -70,8 +70,9 @@ def shift(monkeypatch, mock_redshift, mock_s3):
                         lambda *args, **kwargs: mock_redshift)
     monkeypatch.setattr('shiftmanager.s3.S3.get_s3_connection',
                         lambda *args, **kwargs: mock_s3)
-    shift = rs.Redshift("access_key", "secret_key", "", "", "", "",
-                        connect_s3=False)
+    shift = rs.Redshift("", "", "", "",
+                        aws_access_key_id="access_key",
+                        aws_secret_access_key="secret_key")
     return shift
 
 
