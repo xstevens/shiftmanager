@@ -17,7 +17,7 @@ from subprocess import check_output
 
 import psycopg2
 
-from shiftmanager import util
+import shiftmanager.util as util
 from shiftmanager.s3 import S3
 
 # Redshift distribution styles
@@ -28,24 +28,20 @@ DISTSTYLES_BY_INDEX = {
 }
 
 
-class S3ConnectionError(Exception):
-
-    def __init__(self, msg):
-        """Exception thrown if no S3 creds provided"""
-        self.msg = msg
-
-
 def check_s3_connection(f):
     """
     Check class for S3 connection, try to connect if one is not present.
     """
     @wraps(f)
-    def wrapper(self, *args, **kwargs):
-        if not self.aws_access_key_id and not self.aws_secret_access_key:
-            msg = ("No S3 Credentials present! You can set credentials with "
-                   "the'set_aws_credentials' method on the Redshift class.")
-            raise S3ConnectionError(msg)
-        return f(self, *args, **kwargs)
+    def wrapper(cls, *args, **kwargs):
+        if not cls.s3conn:
+            print("Connecting to S3."
+                  "\nIf you have not set your credentials in"
+                  " the environment or on the class, you can use the "
+                  "set_aws_credentials method")
+            cls.s3conn = cls.get_s3_connection(cls.aws_access_key_id,
+                                               cls.aws_secret_access_key)
+        return f(cls, *args, **kwargs)
     return wrapper
 
 
@@ -80,9 +76,7 @@ class Redshift(S3):
         """
 
         self.set_aws_credentials(aws_access_key_id, aws_secret_access_key)
-        if aws_access_key_id and aws_secret_access_key:
-            self.s3conn = self.get_s3_connection(aws_access_key_id,
-                                                 aws_secret_access_key)
+        self.s3conn = None
 
         database = database or os.environ.get('PGDATABASE')
         user = user or os.environ.get('PGUSER')
