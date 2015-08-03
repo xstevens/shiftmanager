@@ -32,8 +32,8 @@ Fire up your favorite Python interpreter (`ipython` recommended), but make sure 
 >>> gdrive_username = 'newuser' # as in newuser@simple.com
 
 >>> import shiftmanager as sm
->>> devshift = sm.redshift.Shift(host=dev)
->>> prodshift = sm.redshift.Shift(host=prod)
+>>> devshift = sm.redshift.Redshift(host=dev)
+>>> prodshift = sm.redshift.Redshift(host=prod)
 >>> password = shift.random_password()
 
 >>> devshift.create_user(redshift_username, password)
