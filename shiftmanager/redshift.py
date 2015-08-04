@@ -39,8 +39,7 @@ def check_s3_connection(f):
                   "\nIf you have not set your credentials in"
                   " the environment or on the class, you can use the "
                   "set_aws_credentials method")
-            self.s3conn = self.get_s3_connection(self.aws_access_key_id,
-                                                 self.aws_secret_access_key)
+            self.s3conn = self.get_s3_connection()
         return f(self, *args, **kwargs)
     return wrapper
 

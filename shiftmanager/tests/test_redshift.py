@@ -220,6 +220,8 @@ def get_manifest_and_jsonpaths_keys(s3keys):
 
 def test_copy_to_json(shift, json_data):
 
+    shift.s3conn = None
+
     jsonpaths = shift.gen_jsonpaths(json_data[0])
 
     # With cleanup
