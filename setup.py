@@ -35,7 +35,7 @@ reqs = ["boto>=2.38.0",
 
 setup(
     name='shiftmanager',
-    version='0.0.1',
+    version='0.0.2',
     description='Redshift Management Tools',
     author='Jeff Klukas',
     author_email='klukas@simple.com',
