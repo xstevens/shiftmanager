@@ -50,6 +50,8 @@ class S3(object):
                                   **kwargs)
         else:
             s3conn = S3Connection(**kwargs)
+            self.aws_access_key_id = s3conn.aws_access_key_id
+            self.aws_secret_access_key = s3conn.aws_secret_access_key
 
         return s3conn
 
