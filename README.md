@@ -34,7 +34,7 @@ Fire up your favorite Python interpreter (`ipython` recommended), but make sure 
 >>> import shiftmanager as sm
 >>> devshift = sm.redshift.Redshift(host=dev)
 >>> prodshift = sm.redshift.Redshift(host=prod)
->>> password = shift.random_password()
+>>> password = prodshift.random_password()
 
 >>> devshift.create_user(redshift_username, password)
 >>> prodshift.create_user(redshift_username, password)
