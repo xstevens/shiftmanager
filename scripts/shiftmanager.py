@@ -1,1 +1,0 @@
-../shiftmanager.py
