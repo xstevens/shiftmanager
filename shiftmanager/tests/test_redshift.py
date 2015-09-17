@@ -15,17 +15,37 @@ import tempfile
 
 from mock import MagicMock, ANY
 import pytest
+from redshift_sqlalchemy.dialect import RedshiftDialect
+import sqlalchemy as sa
 
 import shiftmanager.redshift as rs
 
 
+def cleaned(statement):
+    text = str(statement)
+    stripped_lines = [line.strip() for line in text.split('\n')]
+    joined = '\n'.join([line for line in stripped_lines if line])
+    return joined
+
+
+class SqlTextMatcher(object):
+
+    def __init__(self, text):
+        self.text = text
+
+    def __eq__(self, text):
+        print(cleaned(self.text))
+        print(cleaned(text))
+        return cleaned(self.text) == cleaned(text)
+
+
 @pytest.fixture
-def mock_redshift():
-    """Mock the psycopg2 connection"""
-    mock_cur = MagicMock()
+def mock_engine():
     mock_conn = MagicMock()
-    mock_conn.cursor.return_value = mock_cur
-    return mock_conn
+    mock_engine = MagicMock()
+    mock_engine.connect.return_value = mock_conn
+    mock_engine.dialect = RedshiftDialect()
+    return mock_engine
 
 
 @pytest.fixture
@@ -64,10 +84,10 @@ def json_data():
 
 
 @pytest.fixture
-def shift(monkeypatch, mock_redshift, mock_s3):
+def shift(monkeypatch, mock_engine, mock_s3):
     """Patch psycopg2 with connection mocks, return conn"""
-    monkeypatch.setattr('psycopg2.connect',
-                        lambda *args, **kwargs: mock_redshift)
+    monkeypatch.setattr('sqlalchemy.create_engine',
+                        lambda *args, **kwargs: mock_engine)
     monkeypatch.setattr('shiftmanager.s3.S3.get_s3_connection',
                         lambda *args, **kwargs: mock_s3)
     shift = rs.Redshift("", "", "", "",
@@ -88,7 +108,7 @@ def temp_test_directory():
 
 def assert_execute(shift, expected):
     """Helper for asserting an executed SQL statement on mock connection"""
-    shift.conn.cursor().execute.assert_called_with(expected)
+    shift.conn.execute.assert_called_with(SqlTextMatcher(expected))
 
 
 def test_random_password(shift):
@@ -144,50 +164,43 @@ def test_chunk_json_slices(shift, json_data):
 
 def test_create_user(shift):
 
-    shift.create_user("swiper", "swiperpass")
+    shift.create_user("swiper", "swiperpass", groups=['analyticsusers'],
+                      wlm_query_slot_count=2)
 
-    expected = """
-        CREATE USER swiper
-        PASSWORD 'swiperpass'
-        IN GROUP analyticsusers;
-        ALTER USER swiper
-        SET wlm_query_slot_count TO 4;
-        """
+    expected1 = ("CREATE USER swiper PASSWORD 'swiperpass' "
+                 "IN GROUP analyticsusers")
+    expected2 = "ALTER USER swiper SET wlm_query_slot_count = 2"
 
-    assert_execute(shift, expected)
+    shift.conn.execute.assert_any_call(SqlTextMatcher(expected1))
+    shift.conn.execute.assert_any_call(SqlTextMatcher(expected2))
 
 
-def test_set_password(shift):
+def test_alter_user(shift):
 
-    shift.set_password("swiper", "swiperpass")
+    shift.alter_user("swiper", password="swiperpass")
 
-    expected = """
-        ALTER USER swiper
-        PASSWORD 'swiperpass';
-        """
+    expected = "ALTER USER swiper PASSWORD 'swiperpass'"
 
     assert_execute(shift, expected)
 
 
 def test_dedupe(shift):
 
-    shift.dedupe("test")
+    table = sa.Table("test", sa.MetaData(),
+                     sa.schema.Column("col1", sa.INTEGER))
+    statement = shift.deep_copy(table, distinct=True, copy_privileges=False)
 
     expected = """
-        -- make all updates to this table block
-        LOCK test;
-
-        -- CREATE TABLE LIKE copies the dist key
-        CREATE TEMP TABLE test_copied (LIKE test);
-
-        -- move the data
-        INSERT INTO test_copied SELECT DISTINCT * FROM test;
-        DELETE FROM test;  -- slower than TRUNCATE, but transaction-safe
-        INSERT INTO test (SELECT * FROM test_copied);
-        DROP TABLE test_copied;
-        """
-
-    assert_execute(shift, expected)
+    LOCK TABLE test;
+    ALTER TABLE test RENAME TO test$outgoing;
+    CREATE TABLE test (
+    col1 INTEGER
+    )
+    ;
+    INSERT INTO test SELECT DISTINCT * from test$outgoing;
+    DROP TABLE test$outgoing
+    """
+    assert(cleaned(statement) == cleaned(expected))
 
 
 def check_key_calls(s3keys, slices):
@@ -245,9 +258,7 @@ def test_copy_to_json(shift, json_data):
             FROM '{manifest}'
             CREDENTIALS '{creds}'
             JSON '{jsonpaths}'
-            MANIFEST
-            GZIP
-            TIMEFORMAT 'auto';
+            MANIFEST GZIP TIMEFORMAT 'auto'
             """.format(manifest=mfest, creds=expect_creds,
                        jsonpaths=jpaths)
 

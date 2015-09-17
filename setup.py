@@ -28,6 +28,8 @@ reqs = ["boto>=2.38.0",
         "pytest>=2.7.2",
         "python-dateutil>=2.4.2",
         "python-gnupg>=0.3.6",
+        "sqlalchemy-redshift>=0.2.0",  # We actually need unreleased 0.2.1
+        "sqlalchemy-views>=0.2",
         "rsa>=3.2",
         "simplejson>=3.8.0",
         "six>=1.9.0",

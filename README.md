@@ -2,7 +2,7 @@
 
 ![Chad Vader, Shift Manager](chadvader.jpg)
 
-Tool for creating Redshift users, distributing credentials, etc.
+Tool for managing Redshift: creating users, distributing credentials, migrating tables, etc.
 
 ## Installation
 
@@ -26,20 +26,20 @@ We distribute Redshift credentials to new users via a document on Google Drive.
 
 Fire up your favorite Python interpreter (`ipython` recommended), but make sure you have environment variables `PGUSER` and `PGPASSWORD` set for the process, probably via `chpst` or [`envcrypt`](https://github.banksimple.com/analytics/sup/blob/master/dev-setup.md#credentials). Your session will look something like:
 ```python
->>> dev = "dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com"
->>> prod = "prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com"
 >>> redshift_username = 'newuser'
 >>> gdrive_username = 'newuser' # as in newuser@simple.com
+>>> groups = ['analyticsusers']
+>>> user_kwargs = dict(groups=groups, wlm_query_slot_count=2)
 
->>> import shiftmanager as sm
->>> devshift = sm.redshift.Redshift(host=dev)
->>> prodshift = sm.redshift.Redshift(host=prod)
+>>> from shiftmanager import Redshift, creds
+>>> devshift = Redshift(host="dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
+>>> prodshift = Redshift(host="prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
 >>> password = prodshift.random_password()
 
->>> devshift.create_user(redshift_username, password)
->>> prodshift.create_user(redshift_username, password)
+>>> devshift.create_user(redshift_username, password, **user_kwargs)
+>>> prodshift.create_user(redshift_username, password, **user_kwargs)
 
->>> sm.creds.post_user_creds_to_gdrive(gdrive_username, redshift_username, password)
+>>> creds.post_user_creds_to_gdrive(gdrive_username, redshift_username, password)
 Successfully created creds for user 'newuser' and sent a notification email.
 ```
 
@@ -49,11 +49,40 @@ The first time you run `post_user_creds_to_gdrive`, a browser window should open
 
 If you need to reset a password, use `set_password` method rather than `create_user`.
 
-## Creating a Service Account
+## Modifying Tables
 
-*Note that this process is changing to use the new [cloudbank credentials framework](https://github.banksimple.com/ops/cloudbank#credentials). Check with klukas and moyer if you need to do this right now.*
+When a table has too many columns to vacuum, it's time to perform a deep copy:
+```python
+>>> from shiftmanager import Redshift, creds
+>>> devshift = Redshift(host="dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
+>>> statement = devshift.deep_copy('transaction', schema='analytics')
+>>> # you should look at the statement and make sure it's reasonable before proceeding
+>>> devshift.execute(statement)
+```
 
-When a service needs to access Redshift, we create accounts under the name of the service and then store the associated passwords in S3. In order to get the passwords in S3, the security team prefers that we GPG-encode a text document containing the passwords, and publish that in a private gist.
+The same method can be used to dedupe:
+```python
+>>> from shiftmanager import Redshift
+>>> devshift = Redshift(host="dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
+>>> statement = devshift.deep_copy('transaction', schema='analytics', dedupe=True)
+>>> # you should look at the statement and make sure it's reasonable before proceeding
+>>> devshift.execute(statement)
+```
+
+Or to change the structure of the table:
+```python
+>>> from shiftmanager import Redshift
+>>> devshift = Redshift(host="dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
+>>> statement = devshift.deep_copy('transaction', schema='analytics', redshift_distkey='user_id', redshift_sortkey=('user_id', 'timestamp'))
+>>> # you should look at the statement and make sure it's reasonable before proceeding
+>>> devshift.execute(statement)
+```
+
+
+
+## Encrypting Something.
+
+We shouldn't really need this anymore.
 
 As in the previous section, fire up a Python interpreter with `PGUSER` and `PGPASSWORD` set:
 ```python
@@ -77,8 +106,7 @@ Encypting for the following uids:
     Matt Moyer <mattmoyer@gmail.com>
     Matt Moyer (Security Engineer at Simple) <moyer@simple.com>
     Steven Surgnier <steven.surgnier@simple.com>
-    Michael Ehlert (SKANKPIMPLE!) <michael@simple.com>
 >>> print(ciphertext)
 ```
 
-You'll now have a block of ASCII-armored GPG ciphertext on your console. Paste this into a [new gist](https://github.banksimple.com/gist), create the gist as "secret", and send a private message on IRC to @moyer or @mehlert asking them to upload to S3.
+You'll now have a block of ASCII-armored GPG ciphertext on your console. Paste this into a [new gist](https://github.banksimple.com/gist), create the gist as "secret", and send a private message on Slack to @moyer or other appropriate credentialed individual.
