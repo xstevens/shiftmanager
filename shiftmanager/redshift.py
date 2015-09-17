@@ -129,6 +129,7 @@ class Redshift(S3):
         self.conn = self.engine.connect()
         self.meta = sqlalchemy.MetaData()
         self.meta.bind = self.engine
+        self.preparer = self.engine.dialect.identifier_preparer
         self._all_privileges = {}
 
     @staticmethod
@@ -505,10 +506,7 @@ class Redshift(S3):
         use_cache: boolean
             Use cached results for the privilege query, if available
         """
-        try:
-            CreateTable(table)
-        except AttributeError:
-            table = self.reflected_table(table, schema=schema)
+        table = self._pass_or_reflect(table, schema=schema)
         statements = [str(CreateTable(table).compile(self.engine))]
         if copy_privileges:
             statements += self._privilege_statements(table, use_cache)
@@ -520,6 +518,9 @@ class Redshift(S3):
         """
         Return a str containing the necessary SQL statements
         to recreate `view`.
+
+        Additional `kwargs` are passed to the SQLAlchemy engine's
+        `get_view_definition` method.
 
         Parameters
         ----------
@@ -534,10 +535,7 @@ class Redshift(S3):
         use_cache: boolean
             Use cached results for the privilege query, if available
         """
-        try:
-            CreateTable(view)
-        except AttributeError:
-            view = self.reflected_table(view, schema=schema)
+        view = self._pass_or_reflect(view, schema)
         definition = self.engine.dialect.get_view_definition(
             self.engine, name=view.name, schema=view.schema, **kwargs)
         create_statement = str(CreateView(view, definition)
@@ -576,14 +574,8 @@ class Redshift(S3):
         use_cache: boolean
             Use cached results for the privilege query, if available
         """
-        try:
-            CreateTable(table)
-        except AttributeError:
-            table = self.reflected_table(table, schema=schema,
-                                         **kwargs)
-        preparer = self.engine.dialect.identifier_preparer
-        table_name = preparer.format_table(table)
-        print(table_name)
+        table = self._pass_or_reflect(table, schema=schema, **kwargs)
+        table_name = self.preparer.format_table(table)
         outgoing_name = table_name + '$outgoing'
         table_definition = self.table_definition(table, None,
                                                  copy_privileges, use_cache)
@@ -621,3 +613,11 @@ class Redshift(S3):
         statements += grants_from_privileges(priv_info.privileges,
                                              relation.key)
         return statements
+
+    def _pass_or_reflect(self, table, schema, *kwargs):
+        try:
+            # This is already a sqlalchemy.Table object; return it unchanged.
+            CreateTable(table)
+        except AttributeError:
+            table = self.reflected_table(table, schema=schema, **kwargs)
+        return table
