@@ -54,28 +54,28 @@ If you need to reset a password, use `set_password` method rather than `create_u
 When a table has too many columns to vacuum, it's time to perform a deep copy:
 ```python
 >>> from shiftmanager import Redshift, creds
->>> prodshift = Redshift(host="prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
->>> statement = prodshift.deep_copy('transaction', schema='analytics')
+>>> devshift = Redshift(host="dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
+>>> statement = devshift.deep_copy('transaction', schema='analytics')
 >>> # you should look at the statement and make sure it's reasonable before proceeding
->>> prodshift.execute(statement)
+>>> devshift.execute(statement)
 ```
 
 The same method can be used to dedupe:
 ```python
->>> from shiftmanager import Redshift, creds
->>> prodshift = Redshift(host="prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
->>> statement = prodshift.deep_copy('transaction', schema='analytics', dedupe=True)
+>>> from shiftmanager import Redshift
+>>> devshift = Redshift(host="dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
+>>> statement = devshift.deep_copy('transaction', schema='analytics', dedupe=True)
 >>> # you should look at the statement and make sure it's reasonable before proceeding
->>> prodshift.execute(statement)
+>>> devshift.execute(statement)
 ```
 
-Or, with some more effort, change the structure of the table:
+Or to change the structure of the table:
 ```python
->>> from shiftmanager import Redshift, creds
->>> prodshift = Redshift(host="prod-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
->>> statement = prodshift.deep_copy('transaction', schema='analytics', dedupe=True)
+>>> from shiftmanager import Redshift
+>>> devshift = Redshift(host="dev-data-pipeline.cuxrn97vbxid.us-east-1.redshift.amazonaws.com")
+>>> statement = devshift.deep_copy('transaction', schema='analytics', redshift_distkey='user_id', redshift_sortkey=('user_id', 'timestamp'))
 >>> # you should look at the statement and make sure it's reasonable before proceeding
->>> prodshift.execute(statement)
+>>> devshift.execute(statement)
 ```
 
 
