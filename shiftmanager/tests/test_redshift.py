@@ -167,11 +167,11 @@ def test_create_user(shift):
     shift.create_user("swiper", "swiperpass", groups=['analyticsusers'],
                       wlm_query_slot_count=2)
 
-    expected1 = ("CREATE USER swiper PASSWORD 'swiperpass' "
+    expected1 = ("CREATE USER swiper PASSWORD :password "
                  "IN GROUP analyticsusers")
     expected2 = "ALTER USER swiper SET wlm_query_slot_count = 2"
 
-    shift.conn.execute.assert_any_call(SqlTextMatcher(expected1))
+    shift.conn.execute.assert_any_call(SqlTextMatcher(expected1), password='swiperpass')
     shift.conn.execute.assert_any_call(SqlTextMatcher(expected2))
 
 
