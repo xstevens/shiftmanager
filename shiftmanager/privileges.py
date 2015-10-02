@@ -57,8 +57,9 @@ def grants_from_privileges(privileges, relation):
     ['GRANT SELECT ON foo TO PUBLIC', 'GRANT ALL ON foo TO importer']
     """
     grants = []
-    for entry in privileges.split('\n'):
-        grants += grants_from_entry(entry, relation)
+    if privileges:
+        for entry in privileges.split('\n'):
+            grants += grants_from_entry(entry, relation)
     return grants
 
 

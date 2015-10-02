@@ -266,7 +266,7 @@ class Redshift(S3):
         """Execute and commit given statement"""
         return self.conn.execute(sqlalchemy.text(statement))
 
-    def execute(self, statement):
+    def execute(self, statement, **kwargs):
         """
         Execute and commit `statement` using this instance's connection.
 
@@ -279,15 +279,14 @@ class Redshift(S3):
             statement = sqlalchemy.text(statement)
         except TypeError:
             pass
-        return self.conn.execute(statement)
+        return self.conn.execute(statement, **kwargs)
 
     def create_user(self, username, password, createuser=False, createdb=False,
                     groups=None, valid_until=None, **parameters):
         """
         Create a new user account.
         """
-        statement = ("CREATE USER {username} PASSWORD '{password}'"
-                     .format(username=username, password=password))
+        statement = "CREATE USER %s PASSWORD :password" % username
         if createuser:
             statement += " CREATEUSER"
         if createdb:
@@ -295,7 +294,7 @@ class Redshift(S3):
         if groups:
             statement += " IN GROUP "
             statement += ', '.join(groups)
-        self._execute_and_commit(statement)
+        self.execute(statement, password=password)
         if parameters:
             self.alter_user(username, **parameters)
 
@@ -467,8 +466,13 @@ class Redshift(S3):
         http://redshift-sqlalchemy.readthedocs.org/en/latest/ddl-compiler.html
         """
         kw = kwargs.copy()
+        analyze_compression = kwargs.pop('analyze_compression', None)
         kw['autoload'] = True
-        return sqlalchemy.Table(name, self.meta, *args, **kw)
+        table = sqlalchemy.Table(name, self.meta, *args, **kw)
+        if analyze_compression:
+            for col in table.columns:
+                col.info['encode'] = 'raw'
+        return table
 
     def reflected_privileges(self, relation, schema=None, use_cache=True):
         """
@@ -488,7 +492,8 @@ class Redshift(S3):
         return ';\n'.join(self._privilege_statements(relation, use_cache))
 
     def table_definition(self, table, schema=None,
-                         copy_privileges=True, use_cache=True):
+                         copy_privileges=True, use_cache=True,
+                         analyze_compression=False):
         """
         Return a str containing the necessary SQL statements
         to recreate `table`.
@@ -507,6 +512,12 @@ class Redshift(S3):
             Use cached results for the privilege query, if available
         """
         table = self._pass_or_reflect(table, schema=schema)
+        table_name = self.preparer.format_table(table)
+        if analyze_compression:
+            result = self.execute("ANALYZE COMPRESSION %s" % table_name)
+            encodings = dict((r.Column, r.Encoding) for r in result)
+            for col in table.columns:
+                col.info['encode'] = encodings[col.key]
         statements = [str(CreateTable(table).compile(self.engine))]
         if copy_privileges:
             statements += self._privilege_statements(table, use_cache)
@@ -547,7 +558,8 @@ class Redshift(S3):
 
     def deep_copy(self, table, schema=None,
                   copy_privileges=True, use_cache=True,
-                  cascade=False, distinct=False, **kwargs):
+                  cascade=False, distinct=False,
+                  analyze_compression=False, **kwargs):
         """
         Return a str containing the necessary SQL statements
         to perform a deep copy of `table`.
@@ -573,28 +585,39 @@ class Redshift(S3):
             and include them in the return value
         use_cache: boolean
             Use cached results for the privilege query, if available
+        cascade: boolean
+            Drop any dependent views when dropping the source table
+        distinct: boolean
+            Deduplicate the table by adding DISTINCT to the SELECT statement
+        analyze_compression: boolean
+            Alter the column compression encodings based on results of an
+            ANALYZE COMPRESSION statement on the table.
         """
         table = self._pass_or_reflect(table, schema=schema, **kwargs)
         table_name = self.preparer.format_table(table)
         outgoing_name = table_name + '$outgoing'
+        outgoing_name_simple = table.name + '$outgoing'
         table_definition = self.table_definition(table, None,
-                                                 copy_privileges, use_cache)
-        insert = "INSERT INTO {table} SELECT "
+                                                 copy_privileges, use_cache,
+                                                 analyze_compression)
+        insert_statement = "\nINSERT INTO {table_name} SELECT "
         if distinct:
-            insert += "DISTINCT "
-        insert += "* from {outgoing}"
-        drop = "DROP TABLE {outgoing}"
+            insert_statement += "DISTINCT "
+        insert_statement += "* from {outgoing_name}"
+        drop_statement = "DROP TABLE {outgoing_name}"
         if cascade:
             drop += " CASCADE"
         statements = (
-            "LOCK TABLE {table}",
-            "ALTER TABLE {table} RENAME TO {outgoing}",
+            "LOCK TABLE {table_name}",
+            "ALTER TABLE {table_name} RENAME TO {outgoing_name_simple}",
             table_definition,
-            insert,
-            drop,
+            insert_statement,
+            drop_statement,
         )
-        return ';\n'.join(statements).format(table=table_name,
-                                             outgoing=outgoing_name)
+        return ';\n'.join(statements).format(
+            table_name=table_name, outgoing_name=outgoing_name,
+            outgoing_name_simple=outgoing_name_simple,
+        )
 
     def _cache_privileges(self):
         result = self._execute_and_commit(queries.all_privileges)
@@ -607,14 +630,16 @@ class Redshift(S3):
         if not use_cache or not self._all_privileges:
             self._cache_privileges()
         priv_info = self._all_privileges[relation.key]
-        statements = [("ALTER {type} OWNER TO {owner}"
+        relation_name = self.preparer.format_table(relation)
+        statements = [("ALTER {type} {relation_name} OWNER TO {owner}"
                        .format(type=priv_info.type.upper(),
+                               relation_name=relation_name,
                                owner=priv_info.owner_name))]
         statements += grants_from_privileges(priv_info.privileges,
                                              relation.key)
         return statements
 
-    def _pass_or_reflect(self, table, schema, *kwargs):
+    def _pass_or_reflect(self, table, schema, **kwargs):
         try:
             # This is already a sqlalchemy.Table object; return it unchanged.
             CreateTable(table)
