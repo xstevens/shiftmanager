@@ -15,4 +15,5 @@ authors_string = ', '.join(authors)
 emails = ['klukas@simple.com', 'rob@simple.com']
 license = 'MIT'
 copyright = '2015 ' + authors_string
-url = 'http://example.com/'
+# TODO: add a real readthedocs URL when that's available
+url = 'https://simple.com/'
