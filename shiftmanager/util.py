@@ -11,10 +11,10 @@ def memoize(f):
     memo = {}
 
     @wraps(f)
-    def wrapper(cls, key):
+    def wrapper(self, key):
         val = memo.get(key)
         if not val:
-            val = memo[key] = f(cls, key)
+            val = memo[key] = f(self, key)
         return val
 
     return wrapper
@@ -27,23 +27,21 @@ def recur_dict(accum, value, parent=None, list_idx=None):
 
     Parameters
     ----------
-    accum: set
+    accum : set
         Accumulator
-    value: dict
+    value : dict
         Current value to parse
-    parent: string, default None
+    parent : string, default None
         Parent key to get key nesting depth.
-    list_idx: int
+    list_idx : int
         List index to specify list location
 
     Example
     -------
-    >>> res = recur_dict({"one": 1, "two": {"three": [1, 2, 3]}},
-                         list_idx=0)
-    >>> res
-    set(["['one']", "['two']['three'][0]"])
-
-
+    >>> r = recur_dict(set(), {"one": 1, "two": {"three": [1, 2, 3]}},
+    ...                list_idx=0)
+    >>> sorted(r)
+    ["$['one']", "$['two']['three'][0]"]
     """
     list_idx = list_idx or 0
     parent = parent or '$'
