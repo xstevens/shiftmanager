@@ -70,7 +70,7 @@ class AdminMixin(object):
             parameters whose values will be set by additional ALTER USER
             statements added to the batch.
         """
-        data = dict(password=password, valid_until=valid_until)
+        data = dict(password=password, valid_until=str(valid_until))
         statement = "CREATE USER %s" % name
         if createdb:
             statement += " CREATEDB"

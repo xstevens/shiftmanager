@@ -100,6 +100,7 @@ class ReflectionMixin(object):
         table = sqlalchemy.Table(name, self.meta, *args, **kw)
         if analyze_compression:
             for col in table.columns:
+                # Initialize this field
                 col.info['encode'] = 'raw'
         return table
 
@@ -141,7 +142,7 @@ class ReflectionMixin(object):
         table = self._pass_or_reflect(table, schema=schema)
         table_name = self.preparer.format_table(table)
         if analyze_compression:
-            result = self.execute("ANALYZE COMPRESSION %s" % table_name)
+            result = self.engine.execute("ANALYZE COMPRESSION %s" % table_name)
             encodings = dict((r.Column, r.Encoding) for r in result)
             for col in table.columns:
                 col.info['encode'] = encodings[col.key]

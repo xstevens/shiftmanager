@@ -8,6 +8,7 @@ Test Runner: PyTest
 
 from contextlib import contextmanager
 import collections
+import datetime
 import gzip
 import json
 import os
@@ -189,6 +190,12 @@ def test_create_user(shift):
         "CREATE USER swiper IN GROUP analyticsusers PASSWORD 'swiperpass';\n"
         "ALTER USER swiper SET wlm_query_slot_count = 2"
     )
+    assert(batch == expected)
+
+    batch = shift.create_user("swiper", "swiperpass",
+                              valid_until=datetime.datetime(2015, 1, 1))
+    expected = ("CREATE USER swiper PASSWORD 'swiperpass' "
+                "VALID UNTIL '2015-01-01 00:00:00'")
     assert(batch == expected)
 
 
