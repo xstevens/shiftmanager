@@ -71,8 +71,11 @@ def grants_from_entry(entry, relation):
     >>> grants_from_entry('importer=arwdRxt/ops', 'bar')
     ['GRANT ALL ON bar TO importer']
 
-    >>> grants_from_entry('importer=ar*wd*/ops', 'baz')
-    ['GRANT INSERT, UPDATE ON baz TO importer', 'GRANT SELECT, DELETE ON baz TO importer WITH GRANT OPTION']
+    >>> grants = grants_from_entry('importer=ar*wd*/ops', 'baz')
+    >>> print(grants[0])
+    GRANT INSERT, UPDATE ON baz TO importer
+    >>> print(grants[1])
+    GRANT SELECT, DELETE ON baz TO importer WITH GRANT OPTION
 
     >>> grants_from_entry('group finance=r/importer', 'foo')
     ['GRANT SELECT ON foo TO GROUP finance']
@@ -103,8 +106,8 @@ def words_from_relacl_chars(chars):
     >>> words_from_relacl_chars('r*')
     ([], ['SELECT'])
 
-    >>> words_from_relacl_chars('ar*wd*Rxt')
-    (['INSERT', 'UPDATE', 'RULE', 'REFERENCES', 'TRIGGER'], ['SELECT', 'DELETE'])
+    >>> words_from_relacl_chars('ar*wd*Rx')
+    (['INSERT', 'UPDATE', 'RULE', 'REFERENCES'], ['SELECT', 'DELETE'])
     """
     words, words_with_grant_option = [], []
     if chars == 'arwdRxt':

@@ -7,16 +7,18 @@ Test Runner: PyTest
 """
 
 from contextlib import contextmanager
+import collections
+import datetime
 import gzip
 import json
 import os
 import shutil
 import tempfile
 
-from mock import MagicMock, ANY
+from mock import MagicMock, PropertyMock, ANY
 import pytest
-from redshift_sqlalchemy.dialect import RedshiftDialect
 import sqlalchemy as sa
+import psycopg2
 
 import shiftmanager.redshift as rs
 
@@ -40,12 +42,12 @@ class SqlTextMatcher(object):
 
 
 @pytest.fixture
-def mock_engine():
-    mock_conn = MagicMock()
-    mock_engine = MagicMock()
-    mock_engine.connect.return_value = mock_conn
-    mock_engine.dialect = RedshiftDialect()
-    return mock_engine
+def mock_connection():
+    mock_connection = PropertyMock()
+    mock_connection.return_value = mock_connection
+    mock_connection.__enter__ = MagicMock()
+    mock_connection.__exit__ = MagicMock()
+    return mock_connection
 
 
 @pytest.fixture
@@ -83,13 +85,29 @@ def json_data():
     return data
 
 
+def mogrify(self, batch, parameters=None, execute=False):
+    if isinstance(parameters, collections.Mapping):
+        parameters = dict([
+            (key, psycopg2.extensions.adapt(val).getquoted().decode('utf-8'))
+            for key, val in parameters.items()])
+    elif isinstance(parameters, collections.Sequence):
+        parameters = [
+            psycopg2.extensions.adapt(val).getquoted()
+            for val in parameters]
+    if parameters:
+        return batch % parameters
+    return batch
+
+
 @pytest.fixture
-def shift(monkeypatch, mock_engine, mock_s3):
+def shift(monkeypatch, mock_connection, mock_s3):
     """Patch psycopg2 with connection mocks, return conn"""
-    monkeypatch.setattr('sqlalchemy.create_engine',
-                        lambda *args, **kwargs: mock_engine)
-    monkeypatch.setattr('shiftmanager.s3.S3.get_s3_connection',
+
+    monkeypatch.setattr('shiftmanager.Redshift.connection', mock_connection)
+    monkeypatch.setattr('shiftmanager.Redshift.get_s3_connection',
                         lambda *args, **kwargs: mock_s3)
+    monkeypatch.setattr('shiftmanager.Redshift.mogrify', mogrify)
+    monkeypatch.setattr('shiftmanager.Redshift.execute', MagicMock())
     shift = rs.Redshift("", "", "", "",
                         aws_access_key_id="access_key",
                         aws_secret_access_key="secret_key")
@@ -108,7 +126,8 @@ def temp_test_directory():
 
 def assert_execute(shift, expected):
     """Helper for asserting an executed SQL statement on mock connection"""
-    shift.conn.execute.assert_called_with(SqlTextMatcher(expected))
+    assert shift.execute.called
+    shift.execute.assert_called_with(SqlTextMatcher(expected))
 
 
 def test_random_password(shift):
@@ -164,24 +183,27 @@ def test_chunk_json_slices(shift, json_data):
 
 def test_create_user(shift):
 
-    shift.create_user("swiper", "swiperpass", groups=['analyticsusers'],
-                      wlm_query_slot_count=2)
+    batch = shift.create_user("swiper", "swiperpass",
+                              groups=['analyticsusers'],
+                              wlm_query_slot_count=2)
+    expected = (
+        "CREATE USER swiper IN GROUP analyticsusers PASSWORD 'swiperpass';\n"
+        "ALTER USER swiper SET wlm_query_slot_count = 2"
+    )
+    assert(batch == expected)
 
-    expected1 = ("CREATE USER swiper PASSWORD :password "
-                 "IN GROUP analyticsusers")
-    expected2 = "ALTER USER swiper SET wlm_query_slot_count = 2"
-
-    shift.conn.execute.assert_any_call(SqlTextMatcher(expected1), password='swiperpass')
-    shift.conn.execute.assert_any_call(SqlTextMatcher(expected2))
+    batch = shift.create_user("swiper", "swiperpass",
+                              valid_until=datetime.datetime(2015, 1, 1))
+    expected = ("CREATE USER swiper PASSWORD 'swiperpass' "
+                "VALID UNTIL '2015-01-01 00:00:00'")
+    assert(batch == expected)
 
 
 def test_alter_user(shift):
 
-    shift.alter_user("swiper", password="swiperpass")
-
+    statement = shift.alter_user("swiper", password="swiperpass")
     expected = "ALTER USER swiper PASSWORD 'swiperpass'"
-
-    assert_execute(shift, expected)
+    assert(statement == expected)
 
 
 def test_dedupe(shift):

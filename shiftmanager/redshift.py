@@ -6,79 +6,29 @@ and utility functions for managing that database.
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-from contextlib import closing, contextmanager
-import datetime
-from functools import wraps
-import gzip
-import itertools
-import json
 import os
-import os.path
-import random
-import re
-import string
-from subprocess import check_output
 
-import sqlalchemy
-from sqlalchemy.schema import CreateTable
-from sqlalchemy_views import CreateView
+import psycopg2
 
-from shiftmanager import queries, util
-from shiftmanager.privileges import grants_from_privileges
-from shiftmanager.s3 import S3
-
-# Redshift distribution styles
-DISTSTYLES_BY_INDEX = {
-    0: 'EVEN',
-    1: 'KEY',
-    8: 'ALL',
-}
+from shiftmanager.mixins import AdminMixin, ReflectionMixin, S3Mixin
+from shiftmanager.memoized_property import memoized_property
 
 
-# Regex for SQL identifiers (valid table and column names)
-SQL_IDENTIFIER_RE = re.compile(r"""
-   [_a-zA-Z][\w$]*  # SQL standard identifier
-   |                # or
-   (?:"[^"]+")+     # SQL delimited (quoted) identifier
-""", re.VERBOSE)
+class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
+    """Interface to Redshift."""
 
+    @memoized_property
+    def connection(self):
+        """A `psycopg2.Connection` to Redshift.
 
-def _get_relation_key(name, schema):
-    if schema is None:
-        return name
-    else:
-        return schema + "." + name
-
-
-def _get_schema_and_relation(key):
-    if '.' not in key:
-        return (None, key)
-    identifiers = SQL_IDENTIFIER_RE.findall(key)
-    if len(identifiers) == 1:
-        return (None, key)
-    elif len(identifiers) == 2:
-        return identifiers
-    raise ValueError("%s does not look like a valid relation identifier")
-
-
-def check_s3_connection(f):
-    """
-    Check class for S3 connection, try to connect if one is not present.
-    """
-    @wraps(f)
-    def wrapper(self, *args, **kwargs):
-        if not self.s3conn:
-            print("Connecting to S3."
-                  "\nIf you have not set your credentials in"
-                  " the environment or on the class, you can use the "
-                  "set_aws_credentials method")
-            self.s3conn = self.get_s3_connection()
-        return f(self, *args, **kwargs)
-    return wrapper
-
-
-class Redshift(S3):
-    """Interface to Redshift"""
+        Instantiation is delayed until the object is first used.
+        """
+        print("Connecting to %s..." % self.host)
+        return psycopg2.connect(user=self.user,
+                                host=self.host,
+                                port=self.port,
+                                database=self.database,
+                                password=self.password)
 
     def __init__(self, database=None, user=None, password=None, host=None,
                  port=5439, aws_access_key_id=None,
@@ -93,556 +43,52 @@ class Redshift(S3):
 
         Parameters
         ----------
-        database: str
+        database : str
             envvar equivalent: PGDATABASE
-        user: str
+        user : str
             envvar equivalent: PGUSER
-        password: str
+        password : str
             envvar equivalent: PGPASSWORD
-        host: str
+        host : str
             envvar equivalent: PGHOST
-        port: int
+        port : int
             envvar equivalent: PGPORT
-        aws_access_key_id: str
-        aws_secret_access_key: str
+        aws_access_key_id : str
+        aws_secret_access_key : str
         """
 
         self.set_aws_credentials(aws_access_key_id, aws_secret_access_key)
-        self.s3conn = None
+        self.s3_conn = None
 
-        database = database or os.environ.get('PGDATABASE')
-        user = user or os.environ.get('PGUSER')
-        password = password or os.environ.get('PGPASSWORD')
-        host = host or os.environ.get('PGHOST')
-        port = port or os.environ.get('PGPORT')
+        self.user = user or os.environ.get('PGUSER')
+        self.host = host or os.environ.get('PGHOST')
+        self.port = port or os.environ.get('PGPORT')
+        self.database = database or os.environ.get('PGDATABASE')
+        self.password = password or os.environ.get('PGPASSWORD')
 
-        print('Connecting to Redshift...')
-        url = sqlalchemy.engine.url.URL(
-            drivername='redshift+psycopg2',
-            username=user,
-            password=password,
-            host=host,
-            port=port,
-            database=database,
-        )
-        self.engine = sqlalchemy.create_engine(url)
-        self.conn = self.engine.connect()
-        self.meta = sqlalchemy.MetaData()
-        self.meta.bind = self.engine
-        self.preparer = self.engine.dialect.identifier_preparer
-        self._all_privileges = {}
+        self._all_privileges = None
 
-    @staticmethod
-    @contextmanager
-    def chunked_json_slices(data, slices, directory=None, clean_on_exit=True):
+    def execute(self, batch, parameters=None):
         """
-        Given an iterator of dicts, chunk them into `slices` and write to
-        temp files on disk. Clean up when leaving scope.
+        Execute a batch of SQL statements using this instance's connection.
+
+        Statements are executed within a transaction.
 
         Parameters
         ----------
-        data: iter of dicts
-            Iterable of dictionaries to be serialized to chunks
-        slices: int
-            Number of chunks to generate
-        dir: str
-            Dir to write chunks to. Will default to $HOME/.shiftmanager/tmp/
-        clean_on_exit: bool, default True
-            Clean up chunks on disk when context exits
-
-        Returns
-        -------
-        stamp: str
-            Timestamp that prepends the filenames of chunks written to disc
-        chunk_files: list
-            List of filenames
+        batch : str
+            The batch of SQL statements to execute.
+        parameters : list or dict
+            Values to bind to the batch, passed to `cursor.execute`
         """
+        with self.connection as conn:
+            with conn.cursor() as curs:
+                curs.execute(batch, parameters)
 
-        # Ensure that files get cleaned up even on raised exception
-        try:
-            num_data = len(data)
-            chunk_range_start = util.linspace(0, num_data, slices)
-            chunk_range_end = chunk_range_start[1:]
-            chunk_range_end.append(None)
-            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S%f")
-
-            if not directory:
-                user_home = os.path.expanduser("~")
-                directory = os.path.join(user_home, ".shiftmanager", "tmp")
-
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-            chunk_files = []
-            range_zipper = list(zip(chunk_range_start, chunk_range_end))
-            for i, (inclusive, exclusive) in enumerate(range_zipper):
-
-                # Get either a inc/excl slice,
-                # or the slice to the end of the range
-                if exclusive is not None:
-                    sliced = data[inclusive:exclusive]
-                else:
-                    sliced = data[inclusive:]
-
-                newlined = ""
-                for doc in sliced:
-                    newlined = "{}{}\n".format(newlined, json.dumps(doc))
-
-                filepath = "{}.gz".format("-".join([stamp, str(i)]))
-                write_path = os.path.join(directory, filepath)
-                current_fp = gzip.open(write_path, 'wb')
-                current_fp.write(newlined.encode("utf-8"))
-                current_fp.close()
-                chunk_files.append(write_path)
-
-            yield stamp, chunk_files
-
-        finally:
-            if clean_on_exit:
-                for filepath in chunk_files:
-                    os.remove(filepath)
-
-    @staticmethod
-    def random_password(length=64):
-        """
-        Return a strong and valid password for Redshift.
-
-        Constraints:
-         - 8 to 64 characters in length.
-         - Must contain at least one uppercase letter, one lowercase letter,
-           and one number.
-         - Can use any printable ASCII characters (ASCII code 33 to 126)
-           except ' (single quote), \" (double quote), \\, /, @, or space.
-         - See http://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html
-        """
-        rand = random.SystemRandom()
-        invalid_chars = r'''\/'"@ '''
-        valid_chars_set = set(
-            string.digits +
-            string.ascii_letters +
-            string.punctuation
-        ) - set(invalid_chars)
-        valid_chars = list(valid_chars_set)
-        chars = [rand.choice(string.ascii_uppercase),
-                 rand.choice(string.ascii_lowercase),
-                 rand.choice(string.digits)]
-        chars += [rand.choice(valid_chars) for x in range(length - 3)]
-        rand.shuffle(chars)
-        return ''.join(chars)
-
-    @staticmethod
-    def gen_jsonpaths(json_doc, list_idx=None):
-        """
-        Generate Redshift jsonpath file for given JSON document or dict.
-
-        If an array is present, you can specify an index to use for that
-        field in the jsonpaths result. Right now only a single index is
-        supported.
-
-        Results will be ordered alphabetically by default.
-
-        Parameters
-        ----------
-        json_doc: str or dict
-            Dictionary or JSON-able string
-        list_idx: int
-            Index for array position
-
-        Returns
-        -------
-        Dict
-        """
-        if isinstance(json_doc, str):
-            parsed = json.loads(json_doc)
-        else:
-            parsed = json_doc
-
-        paths_set = util.recur_dict(set(), parsed, list_idx=list_idx)
-        paths_list = list(paths_set)
-        paths_list.sort()
-        return {"jsonpaths": paths_list}
-
-    def _execute_and_commit(self, statement):
-        """Execute and commit given statement"""
-        return self.conn.execute(sqlalchemy.text(statement))
-
-    def execute(self, statement, **kwargs):
-        """
-        Execute and commit `statement` using this instance's connection.
-
-        Parameters
-        ----------
-        statement : str or sqlalchemy.Statement
-            The SQL statement or statement batch to execute.
-        """
-        try:
-            statement = sqlalchemy.text(statement)
-        except TypeError:
-            pass
-        return self.conn.execute(statement, **kwargs)
-
-    def create_user(self, username, password, createuser=False, createdb=False,
-                    groups=None, valid_until=None, **parameters):
-        """
-        Create a new user account.
-        """
-        statement = "CREATE USER %s PASSWORD :password" % username
-        if createuser:
-            statement += " CREATEUSER"
-        if createdb:
-            statement += " CREATEDB"
-        if groups:
-            statement += " IN GROUP "
-            statement += ', '.join(groups)
-        self.execute(statement, password=password)
-        if parameters:
-            self.alter_user(username, **parameters)
-
-    def alter_user(self, username, password=None,
-                   createuser=None, createdb=None,
-                   rename=None, **parameters):
-        """
-        Alter an existing user account.
-        """
-        statement = "ALTER USER %s " % username
-        options = []
-        if password:
-            options.append("PASSWORD '%s'" % password)
-        if createuser is not None:
-            if createuser:
-                options.append("CREATEUSER")
-            else:
-                options.append("NOCREATEUSER")
-        if createdb is not None:
-            if createdb:
-                options.append("CREATEDB")
-            else:
-                options.append("NOCREATEDB")
-        if rename:
-            options.append("RENAME TO %s" % rename)
-        for param, value in parameters.items():
-            if value is None:
-                options.append("RESET %s" % param)
-            else:
-                options.append("SET %s = %s" % (param, value))
-        statement += ', '.join(options)
-        self._execute_and_commit(statement)
-
-    def set_password(self, username, password):
-        """
-        Set a user's password.
-        """
-        statement = queries.set_password.format(username=username,
-                                                password=password)
-        self._execute_and_commit(statement)
-
-    @check_s3_connection
-    def copy_json_to_table(self, bucket, keypath, data, jsonpaths, table,
-                           slices=32, clean_up_s3=True, local_path=None,
-                           clean_up_local=True):
-        """
-        Given a list of JSON-able dicts, COPY them to the given `table_name`
-
-        This function will partition the blobs into `slices` number of files,
-        write them to the s3 `bucket`, write the jsonpaths file, COPY them to
-        the table, then optionally clean up everything in the bucket.
-
-        Parameters
-        ----------
-        bucket: str
-            S3 bucket for writes
-        keypath: str
-            S3 key path for writes
-        data: iterable of dicts
-            Iterable of JSON-able dicts
-        jsonpaths: dict
-            Redshift jsonpaths file. If None, will autogenerate with
-            alphabetical order
-        table: str
-            Table name for COPY
-        slices: int
-            Number of slices in your cluster. This many files will be generated
-            on S3 for efficient COPY.
-        clean_up_s3: bool
-            Clean up S3 bucket after COPY completes
-        local_path: str
-            Local path to write chunked JSON. Defaults to
-            $HOME/.shiftmanager/tmp/
-        clean_up_local: bool
-            Clean up local chunked JSON after COPY completes.
-        """
-
-        print("Fetching S3 bucket {}...".format(bucket))
-        bukkit = self.get_bucket(bucket)
-
-        # Keys to clean up
-        s3_sweep = []
-
-        # Ensure S3 cleanup on failure
-        try:
-            with self.chunked_json_slices(data, slices, local_path,
-                                          clean_up_local) \
-                    as (stamp, file_paths):
-
-                manifest = {"entries": []}
-
-                print("Writing chunks...")
-                for path in file_paths:
-                    filename = os.path.basename(path)
-                    # Strip leading slash
-                    if keypath[0] == "/":
-                        keypath = keypath[1:]
-
-                    data_keypath = os.path.join(keypath, filename)
-                    data_key = bukkit.new_key(data_keypath)
-                    s3_sweep.append(data_keypath)
-
-                    with open(path, 'rb') as f:
-                        data_key.set_contents_from_file(f)
-
-                    manifest_entry = {
-                        "url": "s3://{}/{}".format(bukkit.name, data_keypath),
-                        "mandatory": True
-                    }
-                    manifest["entries"].append(manifest_entry)
-                    data_key.close()
-
-                stamped_path = os.path.join(keypath, stamp)
-
-                def single_dict_write(ext, single_data):
-                    kpath = "".join([stamped_path, ext])
-                    complete_path = "s3://{}/{}".format(bukkit.name, kpath)
-                    key = bukkit.new_key(kpath)
-                    self.write_dict_to_key(single_data, key, close=True)
-                    s3_sweep.append(kpath)
-                    return complete_path
-
-                print("Writing .manifest file...")
-                mfest_complete_path = single_dict_write(".manifest", manifest)
-
-                print("Writing jsonpaths file...")
-                jpaths_complete_path = single_dict_write(".jsonpaths",
-                                                         jsonpaths)
-
-            creds = "aws_access_key_id={};aws_secret_access_key={}".format(
-                self.aws_access_key_id, self.aws_secret_access_key)
-
-            statement = queries.copy_from_s3.format(
-                table=table, manifest_key=mfest_complete_path,
-                creds=creds, jpaths_key=jpaths_complete_path)
-
-            print("Performing COPY...")
-            self._execute_and_commit(statement)
-
-        finally:
-            if clean_up_s3:
-                bukkit.delete_keys(s3_sweep)
-
-    def get_table_names(self, schema=None, **kwargs):
-        """
-        Return a list naming all tables and views which exist in `schema`.
-        """
-        return self.engine.dialect.get_table_names(self.engine, schema,
-                                                   **kwargs)
-
-    def reflected_table(self, name, *args, **kwargs):
-        """
-        Return a sqlalchemy.Table reflected from the database.
-
-        This is simply a convenience method which passes arguments to the
-        Table constructor, so you may override various properties of the
-        existing table. In particular, Redshift-specific attributes like
-        distkey and sorkey can be set through ``redshift_*`` kwargs
-        (``redshift_distkey='col1'``,
-        ``redshift_interleaved_sortkey=('col1', 'col2')``, etc.)
-
-        The return value is suitable input for the `table_definition`
-        or `deep_copy` methods, useful for changing the structure of an
-        existing table.
-
-        See Also
-        --------
-        http://docs.sqlalchemy.org/en/rel_1_0/core/reflection.html#overriding-reflected-columns
-        http://redshift-sqlalchemy.readthedocs.org/en/latest/ddl-compiler.html
-        """
-        kw = kwargs.copy()
-        analyze_compression = kwargs.pop('analyze_compression', None)
-        kw['autoload'] = True
-        table = sqlalchemy.Table(name, self.meta, *args, **kw)
-        if analyze_compression:
-            for col in table.columns:
-                col.info['encode'] = 'raw'
-        return table
-
-    def reflected_privileges(self, relation, schema=None, use_cache=True):
-        """
-        Return a str containing the necessary SQL statements
-        to recreate all privileges for `relation`.
-
-        Parameters
-        ----------
-        relation: str or sqlalchemy.Table
-            The table or view to reflect
-        schema: str
-            The database schema in which to look for `relation`
-            (only used if `relation` is str)
-        use_cache: boolean
-            Use cached results for the privilege query, if available
-        """
-        return ';\n'.join(self._privilege_statements(relation, use_cache))
-
-    def table_definition(self, table, schema=None,
-                         copy_privileges=True, use_cache=True,
-                         analyze_compression=False):
-        """
-        Return a str containing the necessary SQL statements
-        to recreate `table`.
-
-        Parameters
-        ----------
-        table: str or sqlalchemy.Table
-            The table to reflect
-        schema: str
-            The database schema in which to look for `table`
-            (only used if `table` is str)
-        copy_privileges: boolean
-            Reflect ownership and grants on the existing table
-            and include them in the return value
-        use_cache: boolean
-            Use cached results for the privilege query, if available
-        """
-        table = self._pass_or_reflect(table, schema=schema)
-        table_name = self.preparer.format_table(table)
-        if analyze_compression:
-            result = self.execute("ANALYZE COMPRESSION %s" % table_name)
-            encodings = dict((r.Column, r.Encoding) for r in result)
-            for col in table.columns:
-                col.info['encode'] = encodings[col.key]
-        statements = [str(CreateTable(table).compile(self.engine))]
-        if copy_privileges:
-            statements += self._privilege_statements(table, use_cache)
-        return ';\n'.join(statements)
-
-    def view_definition(self, view, schema=None,
-                        copy_privileges=True, use_cache=True,
-                        **kwargs):
-        """
-        Return a str containing the necessary SQL statements
-        to recreate `view`.
-
-        Additional `kwargs` are passed to the SQLAlchemy engine's
-        `get_view_definition` method.
-
-        Parameters
-        ----------
-        view: str or sqlalchemy.Table
-            The view to reflect
-        schema: str
-            The database schema in which to look for `view`
-            (only used if `view` is str)
-        copy_privileges: boolean
-            Reflect ownership and grants on the existing view
-            and include them in the return value
-        use_cache: boolean
-            Use cached results for the privilege query, if available
-        """
-        view = self._pass_or_reflect(view, schema)
-        definition = self.engine.dialect.get_view_definition(
-            self.engine, name=view.name, schema=view.schema, **kwargs)
-        create_statement = str(CreateView(view, definition)
-                               .compile(self.engine))
-        statements = []
-        if copy_privileges:
-            statements += self._privilege_statements(view, use_cache)
-        return create_statement + ';\n'.join(statements)
-
-    def deep_copy(self, table, schema=None,
-                  copy_privileges=True, use_cache=True,
-                  cascade=False, distinct=False,
-                  analyze_compression=False, **kwargs):
-        """
-        Return a str containing the necessary SQL statements
-        to perform a deep copy of `table`.
-
-        This method can be used to simply sort and clean
-        an unvacuumable table, or it can be used to migrate
-        to a revised table structure. You can use the
-        `reflected_table` method with overrides to generate a new
-        table structure, then pass that revised object in as `table`.
-
-        Additional keyword arguments will be captured by `kwargs`
-        and passed to the `reflected_table` method.
-
-        Parameters
-        ----------
-        table: str or sqlalchemy.Table
-            The table to reflect
-        schema: str
-            The database schema in which to look for `table`
-            (only used if `table` is str)
-        copy_privileges: boolean
-            Reflect ownership and grants on the existing table
-            and include them in the return value
-        use_cache: boolean
-            Use cached results for the privilege query, if available
-        cascade: boolean
-            Drop any dependent views when dropping the source table
-        distinct: boolean
-            Deduplicate the table by adding DISTINCT to the SELECT statement
-        analyze_compression: boolean
-            Alter the column compression encodings based on results of an
-            ANALYZE COMPRESSION statement on the table.
-        """
-        table = self._pass_or_reflect(table, schema=schema, **kwargs)
-        table_name = self.preparer.format_table(table)
-        outgoing_name = table_name + '$outgoing'
-        outgoing_name_simple = table.name + '$outgoing'
-        table_definition = self.table_definition(table, None,
-                                                 copy_privileges, use_cache,
-                                                 analyze_compression)
-        insert_statement = "\nINSERT INTO {table_name} SELECT "
-        if distinct:
-            insert_statement += "DISTINCT "
-        insert_statement += "* from {outgoing_name}"
-        drop_statement = "DROP TABLE {outgoing_name}"
-        if cascade:
-            drop += " CASCADE"
-        statements = (
-            "LOCK TABLE {table_name}",
-            "ALTER TABLE {table_name} RENAME TO {outgoing_name_simple}",
-            table_definition,
-            insert_statement,
-            drop_statement,
-        )
-        return ';\n'.join(statements).format(
-            table_name=table_name, outgoing_name=outgoing_name,
-            outgoing_name_simple=outgoing_name_simple,
-        )
-
-    def _cache_privileges(self):
-        result = self._execute_and_commit(queries.all_privileges)
-        self._all_privileges = {}
-        for r in result:
-            key = _get_relation_key(r.relname, r.schema)
-            self._all_privileges[key] = r
-
-    def _privilege_statements(self, relation, use_cache):
-        if not use_cache or not self._all_privileges:
-            self._cache_privileges()
-        priv_info = self._all_privileges[relation.key]
-        relation_name = self.preparer.format_table(relation)
-        statements = [("ALTER {type} {relation_name} OWNER TO {owner}"
-                       .format(type=priv_info.type.upper(),
-                               relation_name=relation_name,
-                               owner=priv_info.owner_name))]
-        statements += grants_from_privileges(priv_info.privileges,
-                                             relation.key)
-        return statements
-
-    def _pass_or_reflect(self, table, schema, **kwargs):
-        try:
-            # This is already a sqlalchemy.Table object; return it unchanged.
-            CreateTable(table)
-        except AttributeError:
-            table = self.reflected_table(table, schema=schema, **kwargs)
-        return table
+    def mogrify(self, batch, parameters=None, execute=False):
+        if execute:
+            self.execute(batch, parameters)
+        with self.connection as conn:
+            with conn.cursor() as curs:
+                mogrified = curs.mogrify(batch, parameters)
+        return mogrified
