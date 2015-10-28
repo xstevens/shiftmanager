@@ -17,11 +17,11 @@ it's ready to release publicly.
 shiftmanager
 ============
 
-Tools for managing Redshift: creating users, distributing credentials, migrating tables, etc.
+Admin tools for Amazon Redshift
 
 Installation
 ------------
 
-NOT TRUE YET: Install `shiftmanager` from PyPI::
+NOT TRUE YET: Install ``shiftmanager`` from PyPI::
 
     pip install shiftmanager

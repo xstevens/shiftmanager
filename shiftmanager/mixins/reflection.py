@@ -47,14 +47,15 @@ class ReflectionMixin(object):
 
     @memoized_property
     def engine(self):
-        """A `sqlalchemy.Engine` instance which wraps `connection`."""
+        """A :class:`sqlalchemy.Engine` instance which wraps `connection`."""
         return sqlalchemy.create_engine("redshift+psycopg2://",
                                         poolclass=sqlalchemy.pool.StaticPool,
                                         creator=lambda: self.connection)
 
     @memoized_property
     def meta(self):
-        """A `sqlalchemy.MetaData` instance used for reflection calls."""
+        """A :class:`sqlalchemy.MetaData` instance used for reflection calls.
+        """
         meta = sqlalchemy.MetaData()
         meta.bind = self.engine
         return meta
@@ -65,17 +66,18 @@ class ReflectionMixin(object):
         return self.engine.dialect.identifier_preparer
 
     def get_table_names(self, schema=None, **kwargs):
-        """Return a list naming all tables and views defined in ``schema``.
+        """Return a list naming all tables and views defined in *schema*.
         """
         return self.engine.dialect.get_table_names(self.engine, schema,
                                                    **kwargs)
 
     def reflected_table(self, name, *args, **kwargs):
-        """Return a `Table` reflected from the database.
+        """Return a :class:`sqlalchemy.Table` reflected from the database.
 
         This is simply a convenience method which passes arguments to the
-        `Table` constructor, so you may override various properties of the
-        existing table. In particular, Redshift-specific attributes like
+        :class:`~sqlalchemy.Table` constructor, so you may override various
+        properties of the existing table.
+        In particular, Redshift-specific attributes like
         distkey and sorkey can be set through ``redshift_*`` keyword arguments
         (``redshift_distkey='col1'``,
         ``redshift_interleaved_sortkey=('col1', 'col2')``, etc.)
@@ -84,7 +86,7 @@ class ReflectionMixin(object):
         or `deep_copy` methods, useful for changing the structure of an
         existing table.
 
-        `extend_existing` is set to True by default.
+        *extend_existing* is set to True by default.
 
         Notes
         -----
@@ -105,15 +107,15 @@ class ReflectionMixin(object):
         return table
 
     def reflected_privileges(self, relation, schema=None, use_cache=True):
-        """Return a SQL str which recreates all privileges for ``relation``.
+        """Return a SQL str which recreates all privileges for *relation*.
 
         Parameters
-        ----------
-        relation : str or `Table`
+
+        relation : str or :class:`sqlalchemy.Table`
             The table or view to reflect
         schema : str
-            The database schema in which to look for `relation`
-            (only used if `relation` is str)
+            The database schema in which to look for *relation*
+            (only used if *relation* is str)
         use_cache : boolean
             Use cached results for the privilege query, if available
         """
@@ -124,15 +126,15 @@ class ReflectionMixin(object):
                          analyze_compression=False):
         """
         Return a str containing the necessary SQL statements
-        to recreate `table`.
+        to recreate *table*.
 
         Parameters
         ----------
         table: str or sqlalchemy.Table
             The table to reflect
         schema: str
-            The database schema in which to look for `table`
-            (only used if `table` is str)
+            The database schema in which to look for *table*
+            (only used if *table* is str)
         copy_privileges: boolean
             Reflect ownership and grants on the existing table
             and include them in the return value
@@ -155,15 +157,15 @@ class ReflectionMixin(object):
                         copy_privileges=True, use_cache=True,
                         execute=False,
                         **kwargs):
-        """Return a SQL str defining ``view``.
+        """Return a SQL str defining *view*.
 
         Parameters
         ----------
         view : str or sqlalchemy.Table
             The view to reflect
         schema : str
-            The database schema in which to look for ``view``
-            (only used if ``view`` is str)
+            The database schema in which to look for *view*
+            (only used if *view* is str)
         copy_privileges : boolean
             Reflect ownership and grants on the existing view
             and include them in the return value
@@ -171,7 +173,7 @@ class ReflectionMixin(object):
             Use cached results for the privilege query, if available
         execute : boolean
             Execute the command in addition to returning it.
-        **kwargs :
+        kwargs :
             Additional keyword arguments will be passed unchanged to the
             `reflected_table` method.
         """
@@ -192,24 +194,21 @@ class ReflectionMixin(object):
                   analyze_compression=False,
                   execute=False,
                   **kwargs):
-        """Return a SQL str defining a deep copy of ``table``.
+        """Return a SQL str defining a deep copy of *table*.
 
         This method can be used to simply sort and clean
         an unvacuumable table, or it can be used to migrate
         to a revised table structure. You can use the
         `reflected_table` method with overrides to generate a new
-        table structure, then pass that revised object in as ``table``.
-
-        Additional keyword arguments will be captured by ``kwargs``
-        and passed to the `reflected_table` method.
+        table structure, then pass that revised object in as *table*.
 
         Parameters
         ----------
-        table : str or `Table`
+        table : str or :class:`sqlalchemy.sql.schema.Table`
             The table to reflect
         schema : str
-            The database schema in which to look for ``table``
-            (only used if ``table`` is str)
+            The database schema in which to look for *table*
+            (only used if *table* is str)
         copy_privileges : boolean
             Reflect ownership and grants on the existing table
             and include them in the return value
@@ -224,7 +223,7 @@ class ReflectionMixin(object):
             ANALYZE COMPRESSION statement on the table.
         execute : boolean
             Execute the command in addition to returning it.
-        **kwargs :
+        kwargs :
             Additional keyword arguments will be passed unchanged to the
             `reflected_table` method.
         """

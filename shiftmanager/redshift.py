@@ -19,7 +19,7 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
 
     @memoized_property
     def connection(self):
-        """A `psycopg2.Connection` to Redshift.
+        """A `psycopg2.connect` connection to Redshift.
 
         Instantiation is delayed until the object is first used.
         """
