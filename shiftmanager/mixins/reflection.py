@@ -47,14 +47,15 @@ class ReflectionMixin(object):
 
     @memoized_property
     def engine(self):
-        """A :class:`sqlalchemy.Engine` instance which wraps `connection`."""
+        """A `sqlalchemy.engine` which wraps `connection`.
+        """
         return sqlalchemy.create_engine("redshift+psycopg2://",
                                         poolclass=sqlalchemy.pool.StaticPool,
                                         creator=lambda: self.connection)
 
     @memoized_property
     def meta(self):
-        """A :class:`sqlalchemy.MetaData` instance used for reflection calls.
+        """A `sqlalchemy.schema.MetaData` instance used for reflection calls.
         """
         meta = sqlalchemy.MetaData()
         meta.bind = self.engine
@@ -72,10 +73,10 @@ class ReflectionMixin(object):
                                                    **kwargs)
 
     def reflected_table(self, name, *args, **kwargs):
-        """Return a :class:`sqlalchemy.Table` reflected from the database.
+        """Return a `sqlalchemy.schema.Table` reflected from the database.
 
         This is simply a convenience method which passes arguments to the
-        :class:`~sqlalchemy.Table` constructor, so you may override various
+        `sqlalchemy.schema.Table` constructor, so you may override various
         properties of the existing table.
         In particular, Redshift-specific attributes like
         distkey and sorkey can be set through ``redshift_*`` keyword arguments
@@ -111,12 +112,12 @@ class ReflectionMixin(object):
 
         Parameters
 
-        relation : str or :class:`sqlalchemy.Table`
+        relation : `str` or `sqlalchemy.schema.Table`
             The table or view to reflect
-        schema : str
+        schema : `str`
             The database schema in which to look for *relation*
             (only used if *relation* is str)
-        use_cache : boolean
+        use_cache : `bool`
             Use cached results for the privilege query, if available
         """
         return ';\n'.join(self._privilege_statements(relation, use_cache))
@@ -130,15 +131,15 @@ class ReflectionMixin(object):
 
         Parameters
         ----------
-        table: str or sqlalchemy.Table
+        table : `str` or `sqlalchemy.schema.Table`
             The table to reflect
-        schema: str
+        schema : `str`
             The database schema in which to look for *table*
             (only used if *table* is str)
-        copy_privileges: boolean
+        copy_privileges : `bool`
             Reflect ownership and grants on the existing table
             and include them in the return value
-        use_cache: boolean
+        use_cache : `bool`
             Use cached results for the privilege query, if available
         """
         table = self._pass_or_reflect(table, schema=schema)
@@ -161,17 +162,17 @@ class ReflectionMixin(object):
 
         Parameters
         ----------
-        view : str or sqlalchemy.Table
+        view : `str` or `sqlalchemy.schema.Table`
             The view to reflect
-        schema : str
+        schema : `str`
             The database schema in which to look for *view*
             (only used if *view* is str)
-        copy_privileges : boolean
+        copy_privileges : `bool`
             Reflect ownership and grants on the existing view
             and include them in the return value
-        use_cache : boolean
+        use_cache : `bool`
             Use cached results for the privilege query, if available
-        execute : boolean
+        execute : `bool`
             Execute the command in addition to returning it.
         kwargs :
             Additional keyword arguments will be passed unchanged to the
@@ -204,24 +205,24 @@ class ReflectionMixin(object):
 
         Parameters
         ----------
-        table : str or :class:`sqlalchemy.sql.schema.Table`
+        table : `str` or `sqlalchemy.schema.Table`
             The table to reflect
-        schema : str
+        schema : `str`
             The database schema in which to look for *table*
             (only used if *table* is str)
-        copy_privileges : boolean
+        copy_privileges : `bool`
             Reflect ownership and grants on the existing table
             and include them in the return value
-        use_cache : boolean
+        use_cache : `bool`
             Use cached results for the privilege query, if available
-        cascade : boolean
+        cascade : `bool`
             Drop any dependent views when dropping the source table
-        distinct : boolean
+        distinct : `bool`
             Deduplicate the table by adding DISTINCT to the SELECT statement
-        analyze_compression : boolean
+        analyze_compression : `bool`
             Update the column compression encodings based on results of an
             ANALYZE COMPRESSION statement on the table.
-        execute : boolean
+        execute : `bool`
             Execute the command in addition to returning it.
         kwargs :
             Additional keyword arguments will be passed unchanged to the
