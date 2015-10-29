@@ -15,7 +15,29 @@ from shiftmanager.memoized_property import memoized_property
 
 
 class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
-    """Interface to Redshift."""
+    """Interface to Redshift.
+
+    This class will default to environment params for all arguments.
+
+    For methods requiring S3,  aws keys are not required if you have
+    environmental params set for boto to pick up:
+    http://boto.readthedocs.org/en/latest/s3_tut.html#creating-a-connection
+
+    Parameters
+    ----------
+    database : str
+        envvar equivalent: PGDATABASE
+    user : str
+        envvar equivalent: PGUSER
+    password : str
+        envvar equivalent: PGPASSWORD
+    host : str
+        envvar equivalent: PGHOST
+    port : int
+        envvar equivalent: PGPORT
+    aws_access_key_id : str
+    aws_secret_access_key : str
+    """
 
     @memoized_property
     def connection(self):
@@ -32,30 +54,7 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
 
     def __init__(self, database=None, user=None, password=None, host=None,
                  port=5439, aws_access_key_id=None,
-                 aws_secret_access_key=None,):
-        """
-        The entry point for all Redshift operations in Shiftmanager.
-        This class will default to environment params for all arguments.
-
-        For methods requiring S3,  aws keys are not required if you have
-        environmental params set for boto to pick up:
-        http://boto.readthedocs.org/en/latest/s3_tut.html#creating-a-connection
-
-        Parameters
-        ----------
-        database : str
-            envvar equivalent: PGDATABASE
-        user : str
-            envvar equivalent: PGUSER
-        password : str
-            envvar equivalent: PGPASSWORD
-        host : str
-            envvar equivalent: PGHOST
-        port : int
-            envvar equivalent: PGPORT
-        aws_access_key_id : str
-        aws_secret_access_key : str
-        """
+                 aws_secret_access_key=None):
 
         self.set_aws_credentials(aws_access_key_id, aws_secret_access_key)
         self.s3_conn = None
