@@ -25,12 +25,12 @@ def check_s3_connection(f):
     """
     @wraps(f)
     def wrapper(self, *args, **kwargs):
-        if not self.s3conn:
+        if not self.s3_conn:
             print("Connecting to S3."
                   "\nIf you have not set your credentials in"
                   " the environment or on the class, you can use the "
                   "set_aws_credentials method")
-            self.s3conn = self.get_s3_connection()
+            self.s3_conn = self.get_s3_connection()
         return f(self, *args, **kwargs)
     return wrapper
 
@@ -67,15 +67,15 @@ class S3Mixin(object):
             kwargs["calling_format"] = OrdinaryCallingFormat()
 
         if self.aws_access_key_id and self.aws_secret_access_key:
-            s3conn = S3Connection(self.aws_access_key_id,
-                                  self.aws_secret_access_key,
-                                  **kwargs)
+            s3_conn = S3Connection(self.aws_access_key_id,
+                                   self.aws_secret_access_key,
+                                   **kwargs)
         else:
-            s3conn = S3Connection(**kwargs)
-            self.aws_access_key_id = s3conn.aws_access_key_id
-            self.aws_secret_access_key = s3conn.aws_secret_access_key
+            s3_conn = S3Connection(**kwargs)
+            self.aws_access_key_id = s3_conn.aws_access_key_id
+            self.aws_secret_access_key = s3_conn.aws_secret_access_key
 
-        return s3conn
+        return s3_conn
 
     def write_dict_to_key(self, data, key, close=False):
         """
@@ -103,17 +103,18 @@ class S3Mixin(object):
 
         Parameters
         ----------
-        bucket_name: str
+        bucket_name : str
         """
         try:
-            bucket = self.s3conn.get_bucket(bucket_name)
+            bucket = self.s3_conn.get_bucket(bucket_name)
         except CertificateError as e:
             # Addressing https://github.com/boto/boto/issues/2836
             dot_msg = ("doesn't match either of '*.s3.amazonaws.com',"
                        " 's3.amazonaws.com'")
             if dot_msg in e.message:
-                self.s3conn = self.get_s3_connection(ordinary_calling_fmt=True)
-                bucket = self.s3conn.get_bucket(bucket_name)
+                self.s3_conn = (
+                    self.get_s3_connection(ordinary_calling_fmt=True))
+                bucket = self.s3_conn.get_bucket(bucket_name)
             else:
                 raise
 

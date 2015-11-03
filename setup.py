@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import imp
+import os
 
 from setuptools import setup, find_packages
 
@@ -16,6 +17,12 @@ from setuptools import setup, find_packages
 # the setup_requires keyword.
 metadata = imp.load_source(
     'metadata', 'shiftmanager/metadata.py')
+
+
+def read(filename):
+    with open(os.path.join(os.path.dirname(__file__), filename)) as f:
+        return f.read()
+
 
 setup(
     name=metadata.package,
@@ -42,6 +49,7 @@ setup(
     packages=find_packages(),
     package_data={'shiftmanager': ['*.json']},
     install_requires=[
+        "boto>=2.38.0",
         "psycopg2>=2.5.4",
         "sqlalchemy-redshift>=0.3.0",
         "sqlalchemy-views>=0.2",
