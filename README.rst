@@ -67,6 +67,11 @@ To provide some safety in these cases, the `execute` method
 always initiates a transaction, performing a rollback if any
 statement produces an error.
 
+You can use a `Redshift` instance within a larger script, or you
+can use shiftmanager as a command-line tool for one-off admin tasks.
+If you want to make jumping into shiftmanager as quick as possible,
+see `Configuring shiftmanager For Your Environment`.
+
 
 Creating Users
 --------------
@@ -165,11 +170,37 @@ will be updated in the resultant table based on results of running
 ANALYZE COMPRESSION to determine optimal encodings for the existing data.
 
 
-S3 Stuff
---------
+Copy JSON to Redshift
+---------------------
+
+To be written. See `copy_json_to_table`.
+
 
 Configuring shiftmanager For Your Environment
 ---------------------------------------------
+
+If you use shiftmanager as a command line interface for administering
+Redshift, it can be inconvenient to type in cluster details every time
+you open a new session. We recommend writing a short setup script
+as a `~/.shiftmanager.py` file or the like::
+
+  from shiftmanager import Redshift
+
+  # We're assuming PGPASSWORD and PGUSER are set here.
+  # You might want to pull those in from an encrypted file.
+  dev = Redshift(host="my-dev-host")
+  prod = Redshift(host="my-prod-host")
+
+You can then invoke your script interactively like::
+
+  $ ipython -i ~/.shiftmanager.py
+
+And have immediate access to the objects you set up.
+
+To make this super convenient, add an alias to your `.bashrc` or the like::
+
+  alias shiftmanager="ipython -i ~/.shiftmanager.py"
+
 
 
 Acknowledgments
