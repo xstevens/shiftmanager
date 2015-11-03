@@ -45,8 +45,8 @@ class S3Mixin(object):
 
         Parameters
         ----------
-        aws_access_key_id: str
-        aws_secret_access_key: str
+        aws_access_key_id : str
+        aws_secret_access_key : str
         """
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
@@ -57,7 +57,7 @@ class S3Mixin(object):
 
         Parameters
         ----------
-        ordinary_calling_fmt: bool
+        ordinary_calling_fmt : bool
             Initialize connection with OrdinaryCallingFormat
         """
 
@@ -83,9 +83,9 @@ class S3Mixin(object):
 
         Parameters
         ----------
-        data: dict
-        key: boto.s3.Key
-        close: bool, default False
+        data : dict
+        key : boto.s3.Key
+        close : bool, default False
             Close key after write
         """
         fp = StringIO()
@@ -124,25 +124,25 @@ class S3Mixin(object):
     @contextmanager
     def chunked_json_slices(data, slices, directory=None, clean_on_exit=True):
         """
-        Given an iterator of dicts, chunk them into `slices` and write to
+        Given an iterator of dicts, chunk them into *slices* and write to
         temp files on disk. Clean up when leaving scope.
 
         Parameters
         ----------
-        data: iter of dicts
+        data : iter of dicts
             Iterable of dictionaries to be serialized to chunks
-        slices: int
+        slices : int
             Number of chunks to generate
-        dir: str
+        dir : str
             Dir to write chunks to. Will default to $HOME/.shiftmanager/tmp/
-        clean_on_exit: bool, default True
+        clean_on_exit : bool, default True
             Clean up chunks on disk when context exits
 
         Returns
         -------
-        stamp: str
+        stamp : str
             Timestamp that prepends the filenames of chunks written to disc
-        chunk_files: list
+        chunk_files : list
             List of filenames
         """
 
@@ -203,9 +203,9 @@ class S3Mixin(object):
 
         Parameters
         ----------
-        json_doc: str or dict
+        json_doc : str or dict
             Dictionary or JSON-able string
-        list_idx: int
+        list_idx : int
             Index for array position
 
         Returns
@@ -227,34 +227,34 @@ class S3Mixin(object):
                            slices=32, clean_up_s3=True, local_path=None,
                            clean_up_local=True):
         """
-        Given a list of JSON-able dicts, COPY them to the given `table_name`
+        Given a list of JSON-able dicts, COPY them to the given *table_name*
 
-        This function will partition the blobs into `slices` number of files,
-        write them to the s3 `bucket`, write the jsonpaths file, COPY them to
+        This function will partition the blobs into *slices* number of files,
+        write them to the s3 *bucket*, write the jsonpaths file, COPY them to
         the table, then optionally clean up everything in the bucket.
 
         Parameters
         ----------
-        bucket: str
+        bucket : str
             S3 bucket for writes
-        keypath: str
+        keypath : str
             S3 key path for writes
-        data: iterable of dicts
+        data : iterable of dicts
             Iterable of JSON-able dicts
-        jsonpaths: dict
+        jsonpaths : dict
             Redshift jsonpaths file. If None, will autogenerate with
             alphabetical order
-        table: str
+        table : str
             Table name for COPY
-        slices: int
+        slices : int
             Number of slices in your cluster. This many files will be generated
             on S3 for efficient COPY.
-        clean_up_s3: bool
+        clean_up_s3 : bool
             Clean up S3 bucket after COPY completes
-        local_path: str
+        local_path : str
             Local path to write chunked JSON. Defaults to
             $HOME/.shiftmanager/tmp/
-        clean_up_local: bool
+        clean_up_local : bool
             Clean up local chunked JSON after COPY completes.
         """
 

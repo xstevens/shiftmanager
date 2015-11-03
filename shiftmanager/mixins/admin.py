@@ -7,13 +7,14 @@ def random_password(length=64):
     """Return a strong password valid for Redshift.
 
     Constraints:
-    - 8 to 64 characters in length.
-    - Must contain at least one uppercase letter, one lowercase letter,
+
+    * 8 to 64 characters in length.
+    * Must contain at least one uppercase letter, one lowercase letter,
       and one number.
-    - Can use any printable ASCII characters (ASCII code 33 to 126)
+    * Can use any printable ASCII characters (ASCII code 33 to 126)
       except ``'`` (single quote), ``\"`` (double quote), ``\\``, ``/``,
       ``@``, or space.
-    - See `Redshift's CREATE USER docs
+    * See `Redshift's CREATE USER docs
       <http://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html>`_
     """
     rand = random.SystemRandom()
@@ -65,7 +66,7 @@ class AdminMixin(object):
             Existing groups that the user will belong to.
         execute : boolean
             Execute the command in addition to returning it.
-        **parameters
+        parameters :
             Additional keyword arguments are interpreted as configuration
             parameters whose values will be set by additional ALTER USER
             statements added to the batch.
@@ -109,7 +110,7 @@ class AdminMixin(object):
             New name to assign the user.
         execute : boolean
             Execute the command in addition to returning it.
-        **parameters
+        parameters :
             Additional keyword arguments are interpreted as configuration
             parameters whose values will be set by additional ALTER USER
             statements added to the batch. For values set to None, the
