@@ -42,7 +42,8 @@ Or provide connection parameters via environment variables::
   from shiftmanager import Redshift
   redshift = Redshift()
 
-A database connection will be established the first time it's needed::
+A database connection will be established the first time it's needed
+and persisted for the length of the session as `Redshift.connection`::
 
   >>> statement = redshift.alter_user('chad', wlm_query_slot_count=2)
   Connecting to myhost...
