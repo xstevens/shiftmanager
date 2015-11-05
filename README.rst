@@ -6,6 +6,10 @@ shiftmanager
 
 Admin tools for Amazon Redshift.
 
+.. image:: https://travis-ci.org/SimpleFinance/shiftmanager.svg?branch=master
+    :target: https://travis-ci.org/SimpleFinance/shiftmanager
+    :alt: Travis CI build status
+
 
 Installation
 ------------
