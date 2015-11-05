@@ -1,16 +1,3 @@
-NOTICE
-======
-
-THINGS HAVE MOVED AROUND.
-
-You probably want to look at `shiftmanager-simple
-<https://github.banksimple.com/klukas/shiftmanager-simple>`_,
-a project that provides nice wrappers for using shiftmanager with Simple's
-Redshift setup.
-
-We're trying to clean this repo up to get the project to a state where
-it's ready to release publicly.
-
 .. figure:: chadvader.jpg
    :alt: Chad Vader, Shift Manager
 
@@ -23,7 +10,7 @@ Admin tools for Amazon Redshift.
 Installation
 ------------
 
-NOT TRUE YET: Install ``shiftmanager`` from PyPI::
+Install ``shiftmanager`` from PyPI::
 
   pip install shiftmanager
 
@@ -71,7 +58,7 @@ statement produces an error.
 You can use a `Redshift` instance within a larger script, or you
 can use shiftmanager as a command-line tool for one-off admin tasks.
 If you want to make jumping into shiftmanager as quick as possible,
-see `Configuring shiftmanager For Your Environment`.
+see :ref:`configuration`.
 
 
 Creating Users
@@ -177,13 +164,15 @@ Copy JSON to Redshift
 To be written. See `copy_json_to_table`.
 
 
+.. _configuration:
+
 Configuring shiftmanager For Your Environment
 ---------------------------------------------
 
 If you use shiftmanager as a command line interface for administering
 Redshift, it can be inconvenient to type in cluster details every time
 you open a new session. We recommend writing a short setup script
-as a `~/.shiftmanager.py` file or the like::
+as a ``~/.shiftmanager.py`` file or the like::
 
   from shiftmanager import Redshift
 
@@ -198,7 +187,7 @@ You can then invoke your script interactively like::
 
 And have immediate access to the objects you set up.
 
-To make this super convenient, add an alias to your `.bashrc` or the like::
+To make this super convenient, add an alias to your ``.bashrc`` or the like::
 
   alias shiftmanager="ipython -i ~/.shiftmanager.py"
 

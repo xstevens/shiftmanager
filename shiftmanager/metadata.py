@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Project metadata
+"""
+Project metadata
 
 Information describing the project.
 """
@@ -13,6 +14,6 @@ description = 'Management tools for Amazon Redshift'
 authors = ['Jeff Klukas', 'Rob Story']
 authors_string = ', '.join(authors)
 emails = ['klukas@simple.com', 'rob@simple.com']
+license = 'BSD'
 copyright = '2015 ' + authors_string
-# TODO: add a real readthedocs URL when that's available
-url = 'https://simple.com/'
+url = 'https://shiftmanager.readthedocs.org'

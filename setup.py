@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import imp
-import os
 
 from setuptools import setup, find_packages
 
@@ -15,13 +14,7 @@ from setuptools import setup, find_packages
 # instead, effectively side-stepping the dependency problem. Please make sure
 # metadata has no dependencies, otherwise they will need to be added to
 # the setup_requires keyword.
-metadata = imp.load_source(
-    'metadata', 'shiftmanager/metadata.py')
-
-
-def read(filename):
-    with open(os.path.join(os.path.dirname(__file__), filename)) as f:
-        return f.read()
+metadata = imp.load_source('metadata', 'shiftmanager/metadata.py')
 
 
 setup(
@@ -33,7 +26,6 @@ setup(
     maintainer_email=metadata.emails[0],
     url=metadata.url,
     description=metadata.description,
-    long_description=read('README.rst'),
     # Find a list of classifiers here:
     # <http://pypi.python.org/pypi?%3Aaction=list_classifiers>
     classifiers=[

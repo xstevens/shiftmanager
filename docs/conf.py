@@ -141,7 +141,7 @@ if not on_rtd:  # only import and set the theme if we're building docs locally
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+#html_static_path = ['_static']
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
@@ -226,7 +226,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  (master_doc, 'shiftmanager.tex', u'shiftmanager Documentation',
+  (master_doc, 'shiftmanager.tex', u'Shiftmanager Documentation',
    u'Jeff Klukas, Rob Story', 'manual'),
 ]
 
@@ -256,7 +256,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'shiftmanager', u'shiftmanager Documentation',
+    (master_doc, 'shiftmanager', u'Shiftmanager Documentation',
      [author], 1)
 ]
 
@@ -270,8 +270,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  (master_doc, 'shiftmanager', u'shiftmanager Documentation',
-   author, 'shiftmanager', 'One line description of project.',
+  (master_doc, 'shiftmanager', u'Shiftmanager Documentation',
+   author, 'shiftmanager', 'Admin tools for Amazon Redshift',
    'Miscellaneous'),
 ]
 
