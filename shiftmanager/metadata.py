@@ -9,7 +9,7 @@ Information describing the project.
 package = 'shiftmanager'
 project = 'shiftmanager'
 project_no_spaces = project.replace(' ', '')
-version = '0.2'
+version = '0.2.1'
 description = 'Management tools for Amazon Redshift'
 authors = ['Jeff Klukas', 'Rob Story']
 authors_string = ', '.join(authors)
