@@ -108,6 +108,12 @@ class S3Mixin(object):
             bucket = self.s3_conn.get_bucket(bucket_name)
         except ValueError as e:
             # Addressing https://github.com/boto/boto/issues/2836
+            # We'd like to catch an ssl.CertificateError here, but that
+            # doesn't exist on some python installs. Since CertificateError
+            # is just an empty subclass of ValueError and we re-raise
+            # if the exception's message doesn't match what we expect,
+            # we aren't exposing ourselves too much by catching
+            # all ValueErrors here.
             dot_msg = ("doesn't match either of '*.s3.amazonaws.com',"
                        " 's3.amazonaws.com'")
             if dot_msg in e.message:
