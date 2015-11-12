@@ -7,7 +7,6 @@ from contextlib import contextmanager
 import datetime
 from io import StringIO
 import json
-from ssl import CertificateError
 import os
 import gzip
 from functools import wraps
@@ -107,7 +106,7 @@ class S3Mixin(object):
         """
         try:
             bucket = self.s3_conn.get_bucket(bucket_name)
-        except CertificateError as e:
+        except ValueError as e:
             # Addressing https://github.com/boto/boto/issues/2836
             dot_msg = ("doesn't match either of '*.s3.amazonaws.com',"
                        " 's3.amazonaws.com'")
