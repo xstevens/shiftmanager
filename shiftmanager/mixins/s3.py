@@ -37,7 +37,8 @@ def check_s3_connection(f):
 class S3Mixin(object):
     """The S3 interaction base class for `Redshift`."""
 
-    def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key):
+    def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key,
+                            security_token=None):
         """
         Set AWS credentials. These will be required for any methods that
         need interaction with S3
@@ -46,9 +47,12 @@ class S3Mixin(object):
         ----------
         aws_access_key_id : str
         aws_secret_access_key : str
+        security_token : str or None
+            Temporary security token (if using creds from STS)
         """
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
+        self.security_token = security_token
 
     def get_s3_connection(self, ordinary_calling_fmt=False):
         """
@@ -66,13 +70,22 @@ class S3Mixin(object):
             kwargs["calling_format"] = OrdinaryCallingFormat()
 
         if self.aws_access_key_id and self.aws_secret_access_key:
+            if hasattr(self, 'security_token'):
+                kwargs['security_token'] = self.security_token
             s3_conn = S3Connection(self.aws_access_key_id,
                                    self.aws_secret_access_key,
                                    **kwargs)
         else:
+            # Amazon used to use the AWS_SECURITY_TOKEN, but is transitioning
+            # to AWS_SESSION_TOKEN. boto2 still only supports the old version,
+            # but we want to support both.
+            kwargs['security_token'] = (
+                os.environ.get('AWS_SECURITY_TOKEN') or
+                os.environ.get('AWS_SESSION_TOKEN'))
             s3_conn = S3Connection(**kwargs)
             self.aws_access_key_id = s3_conn.aws_access_key_id
             self.aws_secret_access_key = s3_conn.aws_secret_access_key
+            self.security_token = s3_conn.security_token
 
         return s3_conn
 

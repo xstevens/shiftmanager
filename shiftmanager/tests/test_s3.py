@@ -38,6 +38,11 @@ def assert_execute(shift, expected):
     shift.execute.assert_called_with(SqlTextMatcher(expected))
 
 
+def test_connection_with_security_token(shift):
+    shift.set_aws_credentials('my_access_key', 'my_secret_key', 'my_token')
+    assert shift.security_token == 'my_token'
+
+
 def test_jsonpaths(shift):
 
     test_dict_1 = {"one": 1, "two": {"three": 3}}
