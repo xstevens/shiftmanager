@@ -64,28 +64,23 @@ class S3Mixin(object):
             Initialize connection with OrdinaryCallingFormat
         """
 
-        kwargs = {}
-        # Workaround https://github.com/boto/boto/issues/2836
-        if ordinary_calling_fmt:
-            kwargs["calling_format"] = OrdinaryCallingFormat()
-
-        if self.aws_access_key_id and self.aws_secret_access_key:
-            if hasattr(self, 'security_token'):
-                kwargs['security_token'] = self.security_token
-            s3_conn = S3Connection(self.aws_access_key_id,
-                                   self.aws_secret_access_key,
-                                   **kwargs)
-        else:
+        args = []
+        kwargs = {
             # Amazon used to use the AWS_SECURITY_TOKEN, but is transitioning
             # to AWS_SESSION_TOKEN. boto2 still only supports the old version,
             # but we want to support both.
-            kwargs['security_token'] = (
+            "security_token": (
+                self.security_token or
                 os.environ.get('AWS_SECURITY_TOKEN') or
-                os.environ.get('AWS_SESSION_TOKEN'))
-            s3_conn = S3Connection(**kwargs)
-            self.aws_access_key_id = s3_conn.aws_access_key_id
-            self.aws_secret_access_key = s3_conn.aws_secret_access_key
-            self.security_token = s3_conn.security_token
+                os.environ.get('AWS_SESSION_TOKEN')
+            ),
+        }
+        # Workaround https://github.com/boto/boto/issues/2836
+        if ordinary_calling_fmt:
+            kwargs["calling_format"] = OrdinaryCallingFormat()
+        if self.aws_access_key_id and self.aws_secret_access_key:
+            args += [self.aws_access_key_id, self.aws_secret_access_key]
+        s3_conn = S3Connection(*args, **kwargs)
 
         return s3_conn
 
