@@ -136,8 +136,8 @@ def test_copy_to_json(shift, json_data, tmpdir):
     check_key_calls(bukkit.s3keys, 5)
     mfest, jpaths = get_manifest_and_jsonpaths_keys(bukkit.s3keys)
 
-    expect_creds = "aws_access_key_id={};aws_secret_access_key={}".format(
-        "access_key", "secret_key")
+    expect_creds = ("aws_access_key_id={};aws_secret_access_key={};token={}"
+                    .format("access_key", "secret_key", "security_token"))
     expected = """
             COPY foo_table
             FROM '{manifest}'

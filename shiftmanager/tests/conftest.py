@@ -82,6 +82,7 @@ def shift(monkeypatch, mock_connection, mock_s3):
     monkeypatch.setattr('shiftmanager.Redshift.execute', MagicMock())
     shift = rs.Redshift("", "", "", "",
                         aws_access_key_id="access_key",
-                        aws_secret_access_key="secret_key")
+                        aws_secret_access_key="secret_key",
+                        security_token="security_token")
     shift.s3_conn = mock_s3
     return shift

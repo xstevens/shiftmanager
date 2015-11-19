@@ -82,6 +82,12 @@ class S3Mixin(object):
             args += [self.aws_access_key_id, self.aws_secret_access_key]
         s3_conn = S3Connection(*args, **kwargs)
 
+        # Cache the creds that this connection found
+        provider = s3_conn.provider
+        self.set_aws_credentials(provider.access_key,
+                                 provider.secret_key,
+                                 provider.security_token)
+
         return s3_conn
 
     def write_dict_to_key(self, data, key, close=False):
@@ -326,6 +332,8 @@ class S3Mixin(object):
 
             creds = "aws_access_key_id={};aws_secret_access_key={}".format(
                 self.aws_access_key_id, self.aws_secret_access_key)
+            if self.security_token:
+                creds += ';token={}'.format(self.security_token)
 
             statement = queries.copy_from_s3.format(
                 table=table, manifest_key=mfest_complete_path,
