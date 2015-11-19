@@ -36,7 +36,11 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
     port : int
         envvar equivalent: PGPORT
     aws_access_key_id : str
+        envvar equivalent: AWS_ACCESS_KEY_ID
     aws_secret_access_key : str
+        envvar equivalent: AWS_SECRET_ACCESS_KEY
+    security_token : str
+        envvar equivalent: AWS_SECURITY_TOKEN or AWS_SESSION_TOKEN
     """
 
     @memoized_property
@@ -53,10 +57,13 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
                                 password=self.password)
 
     def __init__(self, database=None, user=None, password=None, host=None,
-                 port=5439, aws_access_key_id=None,
-                 aws_secret_access_key=None):
+                 port=5439,
+                 aws_access_key_id=None,
+                 aws_secret_access_key=None,
+                 security_token=None):
 
-        self.set_aws_credentials(aws_access_key_id, aws_secret_access_key)
+        self.set_aws_credentials(aws_access_key_id, aws_secret_access_key,
+                                 security_token)
         self.s3_conn = None
 
         self.user = user or os.environ.get('PGUSER')

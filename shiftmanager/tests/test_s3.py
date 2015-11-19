@@ -38,6 +38,11 @@ def assert_execute(shift, expected):
     shift.execute.assert_called_with(SqlTextMatcher(expected))
 
 
+def test_connection_with_security_token(shift):
+    shift.set_aws_credentials('my_access_key', 'my_secret_key', 'my_token')
+    assert shift.security_token == 'my_token'
+
+
 def test_jsonpaths(shift):
 
     test_dict_1 = {"one": 1, "two": {"three": 3}}
@@ -131,8 +136,8 @@ def test_copy_to_json(shift, json_data, tmpdir):
     check_key_calls(bukkit.s3keys, 5)
     mfest, jpaths = get_manifest_and_jsonpaths_keys(bukkit.s3keys)
 
-    expect_creds = "aws_access_key_id={};aws_secret_access_key={}".format(
-        "access_key", "secret_key")
+    expect_creds = ("aws_access_key_id={};aws_secret_access_key={};token={}"
+                    .format("access_key", "secret_key", "security_token"))
     expected = """
             COPY foo_table
             FROM '{manifest}'
