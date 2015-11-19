@@ -83,4 +83,5 @@ def shift(monkeypatch, mock_connection, mock_s3):
     shift = rs.Redshift("", "", "", "",
                         aws_access_key_id="access_key",
                         aws_secret_access_key="secret_key")
+    shift.s3_conn = mock_s3
     return shift

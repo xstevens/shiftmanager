@@ -11,6 +11,7 @@ import json
 import os
 
 from mock import ANY
+import pytest
 
 
 def cleaned(statement):
@@ -72,6 +73,16 @@ def test_chunk_json_slices(shift, json_data, tmpdir):
         with shift.chunked_json_slices(data, slices, dpath) as (stamp, paths):
             assert len(paths) == slices
             chunk_checker(paths)
+
+
+def test_get_bucket(shift):
+    def raise_error(*args):
+        raise ValueError("doesn't match either of '*.s3.amazonaws.com',"
+                         " 's3.amazonaws.com'")
+    shift.get_s3_connection()
+    shift.s3_conn.get_bucket.side_effect = raise_error
+    with pytest.raises(ValueError):
+        shift.get_bucket("bucket.with.dots")
 
 
 def check_key_calls(s3keys, slices):

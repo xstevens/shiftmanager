@@ -95,6 +95,7 @@ class S3Mixin(object):
             key.close()
         return key
 
+    @check_s3_connection
     @memoize
     def get_bucket(self, bucket_name):
         """
@@ -116,7 +117,7 @@ class S3Mixin(object):
             # all ValueErrors here.
             dot_msg = ("doesn't match either of '*.s3.amazonaws.com',"
                        " 's3.amazonaws.com'")
-            if dot_msg in e.message:
+            if dot_msg in str(e):
                 self.s3_conn = (
                     self.get_s3_connection(ordinary_calling_fmt=True))
                 bucket = self.s3_conn.get_bucket(bucket_name)
