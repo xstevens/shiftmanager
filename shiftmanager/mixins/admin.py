@@ -90,7 +90,9 @@ class AdminMixin(object):
     def alter_user(self, name,
                    password=None, valid_until=None,
                    createdb=None, createuser=None,
-                   rename=None, **parameters):
+                   rename=None,
+                   execute=False,
+                   **parameters):
         """Return a SQL str that alters an existing user.
 
         Parameters
@@ -139,4 +141,4 @@ class AdminMixin(object):
             else:
                 options.append("SET %s = %s" % (param, value))
         statement += ', '.join(options)
-        return self.mogrify(statement, data)
+        return self.mogrify(statement, data, execute)
