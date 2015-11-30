@@ -97,4 +97,4 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
         with self.connection as conn:
             with conn.cursor() as curs:
                 mogrified = curs.mogrify(batch, parameters)
-        return mogrified
+        return mogrified.decode('utf-8')
