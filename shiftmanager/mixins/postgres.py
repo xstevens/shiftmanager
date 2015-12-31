@@ -27,6 +27,12 @@ class PostgresMixin(object):
                                 database=self.pg_database,
                                 password=self.pg_password)
 
+    def execute_and_commit_single_statement(self, statement):
+        """Execute single Postgres statement"""
+        with self.pg_connection as conn:
+            with conn.cursor() as cur:
+                cur.execute(statement)
+
     def get_postgres_connection(self, database=None, user=None, password=None,
                                 host=None, port=5432):
         """
@@ -52,7 +58,10 @@ class PostgresMixin(object):
         csv_file_path: str
             File path for the CSV to be written to by Postgres
         """
-        pass
+        copy = "COPY {table_name} TO '{csv_file_path}' DELIMITER ',' CSV;"
+        formatted_statement = copy.format(table_name=table_name,
+                                          csv_file_path=csv_file_path)
+        self.execute_and_commit_single_statement(formatted_statement)
 
     def get_csv_chunk_generator(self, csv_file_path, chunks):
         """
