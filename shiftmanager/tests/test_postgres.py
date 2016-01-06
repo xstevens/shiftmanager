@@ -13,6 +13,7 @@ import psycopg2
 import pytest
 
 import shiftmanager.mixins.postgres as sp
+from shiftmanager import util
 
 @pytest.fixture(scope="session")
 def postgres(request):
@@ -33,8 +34,8 @@ def postgres(request):
 
     # Temp table for test runs; schema is arbitrary.
     create_query = """CREATE TABLE test_table (
+                          row_count integer,
                           uuid char(36),
-                          number integer,
                           name varchar(255));"""
 
     cur.execute(create_query)
@@ -44,8 +45,8 @@ def postgres(request):
     insert_statement = ["INSERT INTO test_table VALUES"]
     for i in range(0, 300, 1):
         name = random.sample(names, 1)[0]
-        row_to_insert = " ('{uuid}', {number}, '{name}'),".format(
-            uuid=uuid.uuid4(), number=random.randint(0, 100), name=name)
+        row_to_insert = " ({row_count}, '{uuid}', '{name}'),".format(
+            row_count=i, uuid=uuid.uuid4(), name=name)
         insert_statement.append(row_to_insert)
 
     joined_insert = "".join(insert_statement)
@@ -73,9 +74,19 @@ def test_get_connection(postgres):
 @pytest.mark.postgrestest
 def test_copy_table_to_csv(postgres, tmpdir):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
-    postgres.copy_table_to_csv("test_table", csv_path)
+    row_count = postgres.copy_table_to_csv("test_table", csv_path)
     assert os.path.isfile(csv_path) == True
+    assert row_count == 300
 
     with open(csv_path, "r") as f:
         rows = [row for row in f]
         assert len(rows) == 300
+
+@pytest.mark.postgrestest
+def test_csv_chunk_generator(postgres, tmpdir):
+    csv_path = os.path.join(str(tmpdir), "test_table.csv")
+    row_count = postgres.copy_table_to_csv("test_table", csv_path)
+    csv_gen = postgres.get_csv_chunk_generator(csv_path, row_count, 10)
+    chunks = [x for x in csv_gen]
+
+    assert len(chunks) == 10

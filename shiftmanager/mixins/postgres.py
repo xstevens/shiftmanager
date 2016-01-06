@@ -10,6 +10,7 @@ from __future__ import (absolute_import, division, print_function,
 import psycopg2
 
 from shiftmanager.memoized_property import memoized_property
+from shiftmanager import util
 
 class PostgresMixin(object):
     """The Postgres interaction base class for `Redshift`."""
@@ -51,31 +52,70 @@ class PostgresMixin(object):
         Use Postgres to COPY the given table_name to a csv file at the given
         csv_path.
 
+        Additionally fetches the row count of the given `table_name` for
+        further processing.
+
         Parameters
         ----------
         table_name: str
             Table name to be written to CSV
         csv_file_path: str
             File path for the CSV to be written to by Postgres
+
+        Returns
+        -------
+        row_count: int
         """
+
         copy = "COPY {table_name} TO '{csv_file_path}' DELIMITER ',' CSV;"
         formatted_statement = copy.format(table_name=table_name,
                                           csv_file_path=csv_file_path)
         self.execute_and_commit_single_statement(formatted_statement)
 
-    def get_csv_chunk_generator(self, csv_file_path, chunks):
+        row_count_select = "SELECT COUNT(*) from {table_name};".format(
+            table_name=table_name)
+        with self.pg_connection as conn:
+            with conn.cursor() as cur:
+                cur.execute(row_count_select)
+                row_count = [r for r in cur][0][0]
+        return row_count
+
+    def get_csv_chunk_generator(self, csv_file_path, row_count, chunks):
         """
-        Given the csv_file_path, split the CSV into chunks number of string
-        blobs.
+        Given the csv_file_path, return string chunks of the CSV with
+        `chunk_size` rows per chunk.
 
         Parameters
         ----------
         csv_file_path: str
             File path for the CSV written by Postgres
+        row_count: int
+            Number of rows in the CSV
         chunks: int
-            Number of chunks to split the CSV file into
+            Number of chunks to return
         """
-        pass
+
+        # Get chunk boundaries
+        left_closed_boundary = util.linspace(0, row_count, chunks)
+        left_closed_boundary.append(row_count - 1)
+        right_closed_boundary = left_closed_boundary[1:]
+        final_boundary_index = len(right_closed_boundary) - 1
+
+        # We're going to allocate a large buffer for this- lets read as fast
+        # as possible
+        chunk_lines = []
+        boundary_index = 0
+        boundary = right_closed_boundary[boundary_index]
+        with open(csv_file_path, "r", 1048576) as f:
+            for count, row in enumerate(f):
+                chunk_lines.append(row)
+                if count == boundary:
+                    if boundary_index != final_boundary_index:
+                        boundary_index += 1
+                        boundary = right_closed_boundary[boundary_index]
+                    yield "".join(chunk_lines)
+                    chunk_lines = []
+
 
     def write_csv_chunk_to_S3(self, chunk, s3_key_path):
         """
