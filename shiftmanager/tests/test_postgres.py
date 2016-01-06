@@ -86,7 +86,19 @@ def test_copy_table_to_csv(postgres, tmpdir):
 def test_csv_chunk_generator(postgres, tmpdir):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
     row_count = postgres.copy_table_to_csv("test_table", csv_path)
-    csv_gen = postgres.get_csv_chunk_generator(csv_path, row_count, 10)
-    chunks = [x for x in csv_gen]
 
-    assert len(chunks) == 10
+    def test_row_ids(chunks):
+        all_row_ids = []
+        for chunk in chunks:
+            rows = chunk.split('\n')
+            all_row_ids.extend([int(row.split(',')[0]) for row in rows[:-1]])
+
+        assert all_row_ids == [x for x in range(0, 300, 1)]
+
+    for chunk_size in range(1, 30, 1):
+
+        csv_gen = postgres.get_csv_chunk_generator(csv_path, row_count, chunk_size)
+        chunks = [x for x in csv_gen]
+
+        assert len(chunks) == chunk_size
+        test_row_ids(chunks)
