@@ -2,10 +2,12 @@
 """
 Test fixture definitions.
 
-These fixture are automatically imported for test files in this directory.
+These fixtures are automatically imported for test files in this directory.
 """
 
 import collections
+import random
+import uuid
 
 from mock import MagicMock, PropertyMock
 import pytest
@@ -86,3 +88,56 @@ def shift(monkeypatch, mock_connection, mock_s3):
                         security_token="security_token")
     shift.s3_conn = mock_s3
     return shift
+
+
+@pytest.fixture
+def postgres(request, mock_s3):
+    """
+    Setup Postgres table with a few random columns of data for testing.
+    Tear down table at end of text fixture context.
+    """
+
+    import shiftmanager.mixins.postgres as sp
+
+    pg = sp.PostgresMixin()
+    pg.s3_conn = mock_s3
+    conn = pg.get_postgres_connection(database="shiftmanager",
+                                      user="shiftmanager")
+    cur = conn.cursor()
+
+    # Just in case of an unclean exit
+    drop_if_exists_query = "DROP TABLE IF EXISTS test_table;"
+
+    cur.execute(drop_if_exists_query)
+
+    # Temp table for test runs; schema is arbitrary.
+    create_query = """CREATE TABLE test_table (
+                          row_count integer,
+                          uuid char(36),
+                          name varchar(255));"""
+
+    cur.execute(create_query)
+
+    # Fill table with a few hundred rows of random data
+    names = {"jill", "jane", "joe", "jim", "carol"}
+    insert_statement = ["INSERT INTO test_table VALUES"]
+    for i in range(0, 300, 1):
+        name = random.sample(names, 1)[0]
+        row_to_insert = " ({row_count}, '{uuid}', '{name}'),".format(
+            row_count=i, uuid=uuid.uuid4(), name=name)
+        insert_statement.append(row_to_insert)
+
+    joined_insert = "".join(insert_statement)
+    complete_insert = "{};".format(joined_insert[:-1])
+    cur.execute(complete_insert)
+    conn.commit()
+
+    def teardown_pg():
+        drop_query = "DROP TABLE test_table;"
+        cur.execute(drop_query)
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    request.addfinalizer(teardown_pg)
+    return pg

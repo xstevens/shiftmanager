@@ -37,6 +37,11 @@ def check_s3_connection(f):
 class S3Mixin(object):
     """The S3 interaction base class for `Redshift`."""
 
+    s3_conn = None
+    aws_access_key_id = None
+    aws_secret_access_key = None
+    security_token = None
+
     def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key,
                             security_token=None):
         """
@@ -65,16 +70,18 @@ class S3Mixin(object):
         """
 
         args = []
-        kwargs = {
-            # Amazon used to use the AWS_SECURITY_TOKEN, but is transitioning
-            # to AWS_SESSION_TOKEN. boto2 still only supports the old version,
-            # but we want to support both.
-            "security_token": (
-                self.security_token or
+        kwargs = {}
+        # Amazon used to use the AWS_SECURITY_TOKEN, but is transitioning
+        # to AWS_SESSION_TOKEN. boto2 still only supports the old version,
+        # but we want to support both.
+        security_token = (
                 os.environ.get('AWS_SECURITY_TOKEN') or
-                os.environ.get('AWS_SESSION_TOKEN')
-            ),
-        }
+                os.environ.get('AWS_SESSION_TOKEN') or
+                self.security_token
+                )
+        if security_token:
+            kwargs['security_token'] = security_token
+
         # Workaround https://github.com/boto/boto/issues/2836
         if ordinary_calling_fmt:
             kwargs["calling_format"] = OrdinaryCallingFormat()
@@ -84,9 +91,13 @@ class S3Mixin(object):
 
         # Cache the creds that this connection found
         provider = s3_conn.provider
-        self.set_aws_credentials(provider.access_key,
-                                 provider.secret_key,
-                                 provider.security_token)
+        if security_token:
+            self.set_aws_credentials(provider.access_key,
+                                     provider.secret_key,
+                                     provider.security_token)
+        else:
+            self.set_aws_credentials(provider.access_key,
+                                     provider.secret_key)
 
         return s3_conn
 
@@ -110,7 +121,7 @@ class S3Mixin(object):
         return key
 
     @check_s3_connection
-    @memoize
+    # @memoize
     def get_bucket(self, bucket_name):
         """
         Get boto.s3.bucket. Caches existing buckets.

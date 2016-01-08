@@ -10,11 +10,11 @@ import os
 
 import psycopg2
 
-from shiftmanager.mixins import AdminMixin, ReflectionMixin, S3Mixin
+from shiftmanager.mixins import (AdminMixin, ReflectionMixin, PostgresMixin)
 from shiftmanager.memoized_property import memoized_property
 
 
-class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
+class Redshift(AdminMixin, ReflectionMixin, PostgresMixin):
     """Interface to Redshift.
 
     This class will default to environment params for all arguments.
@@ -64,7 +64,6 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
 
         self.set_aws_credentials(aws_access_key_id, aws_secret_access_key,
                                  security_token)
-        self.s3_conn = None
 
         self.user = user or os.environ.get('PGUSER')
         self.host = host or os.environ.get('PGHOST')

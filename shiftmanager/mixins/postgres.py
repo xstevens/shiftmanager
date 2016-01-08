@@ -10,9 +10,11 @@ from __future__ import (absolute_import, division, print_function,
 import psycopg2
 
 from shiftmanager.memoized_property import memoized_property
+from shiftmanager.mixins.s3 import S3Mixin
 from shiftmanager import util
 
-class PostgresMixin(object):
+
+class PostgresMixin(S3Mixin):
     """The Postgres interaction base class for `Redshift`."""
 
     @memoized_property
@@ -116,17 +118,20 @@ class PostgresMixin(object):
                     yield "".join(chunk_lines)
                     chunk_lines = []
 
-
-    def write_csv_chunk_to_S3(self, chunk, s3_key_path):
+    def write_csv_chunk_to_S3(self, chunk, bucket, s3_key_path):
         """
         Given a string chunk that represents a piece of a CSV file, write
-        the chunk to chunk_file_path
+        the chunk to a Boto s3 key
 
         Parameters
         ----------
         chunk: str
             String blob representing a chunk of a larger CSV.
-        s3_key_name:
+        bucket: boto.s3.bucket.Bucket
+            The bucket we're writing to
+        s3_key_path: str
             The key path to write the chunk to
         """
+        boto_key = bucket.new_key(s3_key_path)
+        boto_key.set_contents_from_string(chunk, encrypt_key=True)
         pass
