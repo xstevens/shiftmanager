@@ -6,6 +6,9 @@ Mixin classes for working with Postgres database exports
 
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
+from datetime import datetime
+from tempfile import mkstemp
+import os
 
 import psycopg2
 
@@ -36,7 +39,7 @@ class PostgresMixin(S3Mixin):
             with conn.cursor() as cur:
                 cur.execute(statement)
 
-    def get_postgres_connection(self, database=None, user=None, password=None,
+    def create_connection(self, database=None, user=None, password=None,
                                 host=None, port=5432):
         """
         Create a `psycopg2.connect` connection to Redshift.
@@ -103,7 +106,7 @@ class PostgresMixin(S3Mixin):
         right_closed_boundary = left_closed_boundary[1:]
         final_boundary_index = len(right_closed_boundary) - 1
 
-        # We're going to allocate a large buffer for this- lets read as fast
+        # We're going to allocate a large buffer for this- let's read as fast
         # as possible
         chunk_lines = []
         boundary_index = 0
@@ -134,4 +137,45 @@ class PostgresMixin(S3Mixin):
         """
         boto_key = bucket.new_key(s3_key_path)
         boto_key.set_contents_from_string(chunk, encrypt_key=True)
-        pass
+
+    def copy_table_to_redshift(self, table_name, bucket_name, key_prefix, slices, cleanup=True):
+
+        """
+        Write the contents of a Postgres table to Redshift.
+        The table will be written to the given bucket under the given
+        key prefix. If cleanup=True, all files will be deleted after copy.
+
+        Parameters
+        ----------
+        table_name: str
+            Table name to be written to CSV
+        bucket_name: str
+            The name of the S3 bucket we're writing to
+        key_prefix: str
+            The key path within the bucket to write to
+        slices: int
+            The number of slices in user's Redshift cluster, used to
+            split CSV into chunks for parallel data loading
+        cleanup: bool, default True
+            Specifies whether data will remain in S3 after job completes
+        """
+        try:
+            fp, csv_temp_path = mkstemp()
+            row_count = self.copy_table_to_csv(table_name, csv_temp_path)
+            chunk_generator = self.get_csv_chunk_generator(csv_temp_path, row_count, slices)
+            bucket = self.get_bucket(bucket_name)
+            backfill_timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+            for count, chunk in enumerate(chunk_generator):
+                chunk_name = "_".join([backfill_timestamp, "chunk", str(count)])
+                if not key_prefix.endswith("/"):
+                    complete_key_path = "".join([key_prefix,"/",chunk_name])
+                else:
+                    complete_key_path = "".join([key_prefix, chunk_name])
+                self.write_csv_chunk_to_S3(chunk, bucket, complete_key_path)
+
+
+
+
+        finally:
+            os.close(fp)
+            os.remove(csv_temp_path)

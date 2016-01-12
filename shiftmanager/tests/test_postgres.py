@@ -48,7 +48,7 @@ def test_csv_chunk_generator(postgres, tmpdir):
 
     for num_chunks in range(1, 30, 1):
 
-        csv_gen = postgres.get_csv_chunk_generator(csv_path, row_count, num_chunks)
+        csv_gen = postgres.get_csv_chunk_generator(csv_path, row_count, num_chunks) 
         chunks = [x for x in csv_gen]
 
         assert len(chunks) == num_chunks
@@ -68,4 +68,18 @@ def test_write_chunk_to_s3(postgres, tmpdir):
     assert 'tmp_chunk_1.csv' == [x for x in bucket.s3keys.keys()][0]
 
     val = [x for x in bucket.s3keys.values()][0]
-    val.set_contents_from_string.assert_called_once_with(chunks[0], encrypt_key=True)
+    val.set_contents_from_string.assert_called_once_with(chunks[0],
+        encrypt_key=True)
+
+
+@pytest.mark.postgrestest
+def test_copy_table_to_redshift(postgres, tmpdir):
+    postgres.copy_table_to_redshift("test_table", 'com.simple.postgres.mock',
+                                    "/tmp/backfill/", 10)
+
+    bucket = postgres.get_bucket('com.simple.postgres.mock')
+
+    
+
+    from pprint import pprint;import pytest;pytest.set_trace()
+    foo = 1
