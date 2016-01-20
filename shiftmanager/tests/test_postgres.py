@@ -74,12 +74,26 @@ def test_write_chunk_to_s3(postgres, tmpdir):
 
 @pytest.mark.postgrestest
 def test_copy_table_to_redshift(postgres, tmpdir):
+    from pprint import pprint;import pytest;pytest.set_trace()
     postgres.copy_table_to_redshift("test_table", 'com.simple.postgres.mock',
                                     "/tmp/backfill/", 10)
 
     bucket = postgres.get_bucket('com.simple.postgres.mock')
 
+    bucket_keys = list(bucket.s3keys.copy().keys())
+    bucket_keys.sort()
+
+    manifest = bucket_keys.pop(0)
+
+    assert manifest.endswith('.manifest')
     
+    key_list = [x.split("_")[3] for x in bucket_keys]
+
+    comparison_list = ["".join([str(y),'.csv']) for y in range(0,10)]  
+
+    assert key_list == comparison_list
 
     from pprint import pprint;import pytest;pytest.set_trace()
     foo = 1
+
+

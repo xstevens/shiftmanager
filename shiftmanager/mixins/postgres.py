@@ -7,6 +7,7 @@ Mixin classes for working with Postgres database exports
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 from datetime import datetime
+import json
 from tempfile import mkstemp
 import os
 
@@ -40,7 +41,7 @@ class PostgresMixin(S3Mixin):
                 cur.execute(statement)
 
     def create_connection(self, database=None, user=None, password=None,
-                                host=None, port=5432):
+                          host=None, port=5432):
         """
         Create a `psycopg2.connect` connection to Redshift.
         """
@@ -159,19 +160,39 @@ class PostgresMixin(S3Mixin):
         cleanup: bool, default True
             Specifies whether data will remain in S3 after job completes
         """
+        bucket = self.get_bucket(bucket_name)
+        if not key_prefix.endswith("/"):
+            final_key_prefix = "".join([key_prefix, "/"])
+        else:
+            final_key_prefix = key_prefix
+
         try:
             fp, csv_temp_path = mkstemp()
             row_count = self.copy_table_to_csv(table_name, csv_temp_path)
-            chunk_generator = self.get_csv_chunk_generator(csv_temp_path, row_count, slices)
-            bucket = self.get_bucket(bucket_name)
+            chunk_generator = self.get_csv_chunk_generator(csv_temp_path,
+                                                           row_count, slices)
             backfill_timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+            manifest_entries = []
             for count, chunk in enumerate(chunk_generator):
-                chunk_name = "_".join([backfill_timestamp, "chunk", str(count)])
-                if not key_prefix.endswith("/"):
-                    complete_key_path = "".join([key_prefix,"/",chunk_name])
-                else:
-                    complete_key_path = "".join([key_prefix, chunk_name])
+                chunk_name = "_".join([backfill_timestamp, "chunk",
+                                       str(count)])
+                complete_key_path = "".join([final_key_prefix,
+                                             chunk_name, '.csv'])
                 self.write_csv_chunk_to_S3(chunk, bucket, complete_key_path)
+                s3_path = (complete_key_path
+                           if complete_key_path.startswith("/")
+                           else "".join(["/", complete_key_path]))
+                manifest_entries.append({
+                    'url': "".join(['s3://', bucket.name, s3_path]),
+                    'mandatory': 'true'
+                })
+
+            manifest = {'entries': manifest_entries}
+            manifest_key_path = "".join([final_key_prefix,
+                                         backfill_timestamp, ".manifest"])
+            manifest_key = bucket.new_key(manifest_key_path)
+            manifest_key.set_contents_from_string(json.dumps(manifest),
+                                                  encrypt_key=True)
 
 
 
