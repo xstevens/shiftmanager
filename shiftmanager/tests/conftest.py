@@ -114,7 +114,7 @@ def shift(monkeypatch, mock_connection, mock_s3):
 
 
 @pytest.fixture
-def postgres(monkeypatch, request, mock_connection, mock_s3):
+def postgres(monkeypatch, mock_connection, request, mock_s3):
     """
     Setup Postgres table with a few random columns of data for testing.
     Tear down table at end of text fixture context.

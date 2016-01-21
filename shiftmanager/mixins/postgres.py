@@ -142,6 +142,7 @@ class PostgresMixin(S3Mixin):
     def generate_copy_statement(self, table_name, manifest_key_path):
     # does the keypath have a complete bucket name and all?
     # write the rest of this function in the morning
+        pass
 
     def copy_table_to_redshift(self, table_name, bucket_name, key_prefix, slices, cleanup=True):
 
@@ -197,6 +198,7 @@ class PostgresMixin(S3Mixin):
             manifest = {'entries': manifest_entries}
             manifest_key_path = "".join([final_key_prefix,
                                          backfill_timestamp, ".manifest"])
+            from pprint import pprint;import pytest;pytest.set_trace()
             manifest_key = bucket.new_key(manifest_key_path)
             manifest_key.set_contents_from_string(json.dumps(manifest),
                                                   encrypt_key=True)
