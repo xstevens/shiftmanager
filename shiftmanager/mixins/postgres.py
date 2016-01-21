@@ -140,11 +140,18 @@ class PostgresMixin(S3Mixin):
         boto_key.set_contents_from_string(chunk, encrypt_key=True)
 
     def generate_copy_statement(self, table_name, manifest_key_path):
-    # does the keypath have a complete bucket name and all?
-    # write the rest of this function in the morning
-        pass
+        return """
+        copy {table_name}
+        from {manifest_key_path}
+        credentials 'aws_access_key_id={key_id};
+        aws_secret_access_key={secret_key}'
+        manifest;
+        """.format(table_name=table_name, manifest_key_path=manifest_key_path,
+                   key_id=self.aws_access_key_id,
+                   secret_key=self.aws_secret_access_key)
 
-    def copy_table_to_redshift(self, table_name, bucket_name, key_prefix, slices, cleanup=True):
+    def copy_table_to_redshift(self, table_name, bucket_name, key_prefix,
+                               slices, cleanup=True):
 
         """
         Write the contents of a Postgres table to Redshift.
@@ -203,6 +210,9 @@ class PostgresMixin(S3Mixin):
             manifest_key.set_contents_from_string(json.dumps(manifest),
                                                   encrypt_key=True)
 
+            complete_manifest_path = "".join(['s3://', bucket.name,
+                                              manifest_key_path])
+            self.generate_copy_statement(table_name, complete_manifest_path)
 
 
         finally:

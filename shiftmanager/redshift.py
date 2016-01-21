@@ -118,7 +118,6 @@ class Redshift(AdminMixin, ReflectionMixin, PostgresMixin):
                                 where tablename = '{}';""".format(table_name))
 
                 table = [row for row in curs]
-        from pprint import pprint;import pytest;pytest.set_trace()
 
         if table and table[0][0] == table_name:
             return True
