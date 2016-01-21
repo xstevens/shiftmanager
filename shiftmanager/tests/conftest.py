@@ -102,7 +102,7 @@ def postgres(request, mock_s3):
     pg = sp.PostgresMixin()
     pg.s3_conn = mock_s3
     conn = pg.create_connection(database="shiftmanager",
-                                      user="shiftmanager")
+                                user="shiftmanager")
     cur = conn.cursor()
 
     # Just in case of an unclean exit

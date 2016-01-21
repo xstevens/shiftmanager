@@ -139,6 +139,10 @@ class PostgresMixin(S3Mixin):
         boto_key = bucket.new_key(s3_key_path)
         boto_key.set_contents_from_string(chunk, encrypt_key=True)
 
+    def generate_copy_statement(self, table_name, manifest_key_path):
+    # does the keypath have a complete bucket name and all?
+    # write the rest of this function in the morning
+
     def copy_table_to_redshift(self, table_name, bucket_name, key_prefix, slices, cleanup=True):
 
         """
@@ -160,6 +164,9 @@ class PostgresMixin(S3Mixin):
         cleanup: bool, default True
             Specifies whether data will remain in S3 after job completes
         """
+        if not self.table_exists(table_name):
+            raise ValueError("This table_name does not exist in Redshift!")
+
         bucket = self.get_bucket(bucket_name)
         if not key_prefix.endswith("/"):
             final_key_prefix = "".join([key_prefix, "/"])
@@ -193,7 +200,6 @@ class PostgresMixin(S3Mixin):
             manifest_key = bucket.new_key(manifest_key_path)
             manifest_key.set_contents_from_string(json.dumps(manifest),
                                                   encrypt_key=True)
-
 
 
 

@@ -97,3 +97,29 @@ class Redshift(AdminMixin, ReflectionMixin, PostgresMixin):
             with conn.cursor() as curs:
                 mogrified = curs.mogrify(batch, parameters)
         return mogrified.decode('utf-8')
+
+    def table_exists(self, table_name):
+        """
+        Check Redshift for whether a table exists.
+
+        Parameters
+        ----------
+        table_name : str
+            The name of the table for whose existence we're checking
+
+        Returns
+        -------
+        boolean
+        """
+        with self.connection as conn:
+            with conn.cursor() as curs:
+                curs.execute("""select distinct(tablename)
+                                from pg_table_def
+                                where tablename = '{}';""".format(table_name))
+
+                table = [row for row in curs]
+
+        if table and table[0][0] == table_name:
+            return True
+        else:
+            return False

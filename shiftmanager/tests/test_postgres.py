@@ -25,7 +25,7 @@ def test_get_connection(postgres):
 def test_copy_table_to_csv(postgres, tmpdir):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
     row_count = postgres.copy_table_to_csv("test_table", csv_path)
-    assert os.path.isfile(csv_path) == True
+    assert os.path.isfile(csv_path) is True
     assert row_count == 300
 
     with open(csv_path, "r") as f:
@@ -48,7 +48,8 @@ def test_csv_chunk_generator(postgres, tmpdir):
 
     for num_chunks in range(1, 30, 1):
 
-        csv_gen = postgres.get_csv_chunk_generator(csv_path, row_count, num_chunks) 
+        csv_gen = postgres.get_csv_chunk_generator(csv_path,
+                                                   row_count, num_chunks)
         chunks = [x for x in csv_gen]
 
         assert len(chunks) == num_chunks
@@ -69,12 +70,11 @@ def test_write_chunk_to_s3(postgres, tmpdir):
 
     val = [x for x in bucket.s3keys.values()][0]
     val.set_contents_from_string.assert_called_once_with(chunks[0],
-        encrypt_key=True)
+                                                         encrypt_key=True)
 
 
 @pytest.mark.postgrestest
 def test_copy_table_to_redshift(postgres, tmpdir):
-    from pprint import pprint;import pytest;pytest.set_trace()
     postgres.copy_table_to_redshift("test_table", 'com.simple.postgres.mock',
                                     "/tmp/backfill/", 10)
 
@@ -86,14 +86,9 @@ def test_copy_table_to_redshift(postgres, tmpdir):
     manifest = bucket_keys.pop(0)
 
     assert manifest.endswith('.manifest')
-    
+
     key_list = [x.split("_")[3] for x in bucket_keys]
 
-    comparison_list = ["".join([str(y),'.csv']) for y in range(0,10)]  
+    comparison_list = ["".join([str(y), '.csv']) for y in range(0, 10)]
 
     assert key_list == comparison_list
-
-    from pprint import pprint;import pytest;pytest.set_trace()
-    foo = 1
-
-
