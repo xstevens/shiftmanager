@@ -75,6 +75,11 @@ def test_write_chunk_to_s3(postgres, tmpdir):
 
 @pytest.mark.postgrestest
 def test_copy_table_to_redshift(postgres, tmpdir):
+
+    # Set up mocking behavior
+    cur = postgres.connection.cursor()
+    cur.return_rows = [("test_table",)]
+
     postgres.copy_table_to_redshift("test_table", 'com.simple.postgres.mock',
                                     "/tmp/backfill/", 10)
 

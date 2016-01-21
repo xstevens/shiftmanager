@@ -17,8 +17,31 @@ import psycopg2
 @pytest.fixture
 def mock_connection():
     mock_connection = PropertyMock()
+
+    class MockCursor(object):
+
+        statements = []
+        return_rows = []
+
+        def execute(self, statement):
+            self.statements.append(statement)
+
+        def __enter__(self, *args, **kwargs):
+            return self
+
+        def __exit__(self, *args, **kwargs):
+            return
+
+        def __iter__(self):
+            for row in self.return_rows:
+                yield row
+
+    mock_cursor = MockCursor()
+    mock_connection_enter = MagicMock()
+    mock_connection_enter.cursor.return_value = mock_cursor
     mock_connection.return_value = mock_connection
-    mock_connection.__enter__ = MagicMock()
+    mock_connection.cursor.return_value = mock_cursor
+    mock_connection.__enter__ = lambda x: mock_connection_enter
     mock_connection.__exit__ = MagicMock()
     return mock_connection
 
@@ -91,15 +114,25 @@ def shift(monkeypatch, mock_connection, mock_s3):
 
 
 @pytest.fixture
-def postgres(request, mock_s3):
+def postgres(monkeypatch, request, mock_connection, mock_s3):
     """
     Setup Postgres table with a few random columns of data for testing.
     Tear down table at end of text fixture context.
     """
 
     import shiftmanager.mixins.postgres as sp
+    from shiftmanager.redshift import Redshift
 
-    pg = sp.PostgresMixin()
+    monkeypatch.setattr('shiftmanager.Redshift.connection', mock_connection)
+
+    class PostgresRedshift(Redshift, sp.PostgresMixin):
+        """We need the Redshift methods, but don't want to require Postgres
+           for every single test. Thus, we create this dummy class"""
+
+        def __init__(self, *args, **kwargs):
+            super(PostgresRedshift, self).__init__(self, args, kwargs)
+
+    pg = PostgresRedshift()
     pg.s3_conn = mock_s3
     conn = pg.create_connection(database="shiftmanager",
                                 user="shiftmanager")
