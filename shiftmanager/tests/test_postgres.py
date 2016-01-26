@@ -64,7 +64,7 @@ def test_write_chunk_to_s3(postgres, tmpdir):
     chunks = [x for x in csv_gen]
 
     bucket = postgres.get_bucket('com.simple.postgres.mock')
-    postgres.write_csv_chunk_to_S3(chunks[0], bucket, 'tmp_chunk_1.csv')
+    postgres.write_csv_chunk_to_s3(chunks[0], bucket, 'tmp_chunk_1.csv')
 
     assert 'tmp_chunk_1.csv' == [x for x in bucket.s3keys.keys()][0]
 
@@ -97,3 +97,16 @@ def test_copy_table_to_redshift(postgres, tmpdir):
     comparison_list = ["".join([str(y), '.csv']) for y in range(0, 10)]
 
     assert key_list == comparison_list
+
+    copy_statement = cur.statements[-1]
+
+    from pprint import pprint;import pytest;pytest.set_trace()
+
+    split_statement = [x.strip() for x in copy_statement.split("\n")]
+
+    assert split_statement[0] == "copy test_table"
+    assert (split_statement[1].startswith("from 's3://com.simple.mock/tmp/backfill/") and
+            split_statement[1].endswith(".manifest'"))
+    assert split_statement[2] == "credentials 'aws_access_key_id=None;aws_secret_access_key=None'"
+    assert split_statement[3] == "manifest"
+    assert split_statement[4] == "csv;"

@@ -23,7 +23,7 @@ def mock_connection():
         statements = []
         return_rows = []
 
-        def execute(self, statement):
+        def execute(self, statement, *args, **kwargs):
             self.statements.append(statement)
 
         def __enter__(self, *args, **kwargs):
@@ -134,8 +134,8 @@ def postgres(monkeypatch, mock_connection, request, mock_s3):
 
     pg = PostgresRedshift()
     pg.s3_conn = mock_s3
-    conn = pg.create_connection(database="shiftmanager",
-                                user="shiftmanager")
+    conn = pg.create_pg_connection(database="shiftmanager",
+                                   user="shiftmanager")
     cur = conn.cursor()
 
     # Just in case of an unclean exit

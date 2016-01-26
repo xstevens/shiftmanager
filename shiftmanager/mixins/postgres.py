@@ -40,8 +40,8 @@ class PostgresMixin(S3Mixin):
             with conn.cursor() as cur:
                 cur.execute(statement)
 
-    def create_connection(self, database=None, user=None, password=None,
-                          host=None, port=5432):
+    def create_pg_connection(self, database=None, user=None, password=None,
+                             host='localhost', port=5432):
         """
         Create a `psycopg2.connect` connection to Redshift.
         """
@@ -122,7 +122,7 @@ class PostgresMixin(S3Mixin):
                     yield "".join(chunk_lines)
                     chunk_lines = []
 
-    def write_csv_chunk_to_S3(self, chunk, bucket, s3_key_path):
+    def write_csv_chunk_to_s3(self, chunk, bucket, s3_key_path):
         """
         Given a string chunk that represents a piece of a CSV file, write
         the chunk to a Boto s3 key
@@ -140,23 +140,22 @@ class PostgresMixin(S3Mixin):
         boto_key.set_contents_from_string(chunk, encrypt_key=True)
 
     def generate_copy_statement(self, table_name, manifest_key_path):
-        return """
-        copy {table_name}
-        from {manifest_key_path}
-        credentials 'aws_access_key_id={key_id};
-        aws_secret_access_key={secret_key}'
-        manifest;
-        """.format(table_name=table_name, manifest_key_path=manifest_key_path,
-                   key_id=self.aws_access_key_id,
-                   secret_key=self.aws_secret_access_key)
+        return """copy {table_name}
+                  from '{manifest_key_path}'
+                  credentials 'aws_access_key_id={key_id};aws_secret_access_key={secret_key}'
+                  manifest
+                  csv;""".format(table_name=table_name,
+                                 manifest_key_path=manifest_key_path,
+                                 key_id=self.aws_access_key_id,
+                                 secret_key=self.aws_secret_access_key)
 
     def copy_table_to_redshift(self, table_name, bucket_name, key_prefix,
-                               slices, cleanup=True):
+                               slices):
 
         """
         Write the contents of a Postgres table to Redshift.
         The table will be written to the given bucket under the given
-        key prefix. If cleanup=True, all files will be deleted after copy.
+        key prefix.
 
         Parameters
         ----------
@@ -169,8 +168,6 @@ class PostgresMixin(S3Mixin):
         slices: int
             The number of slices in user's Redshift cluster, used to
             split CSV into chunks for parallel data loading
-        cleanup: bool, default True
-            Specifies whether data will remain in S3 after job completes
         """
         if not self.table_exists(table_name):
             raise ValueError("This table_name does not exist in Redshift!")
@@ -183,37 +180,41 @@ class PostgresMixin(S3Mixin):
 
         try:
             fp, csv_temp_path = mkstemp()
+            print('Copying table {} to CSV...'.format(table_name))
             row_count = self.copy_table_to_csv(table_name, csv_temp_path)
             chunk_generator = self.get_csv_chunk_generator(csv_temp_path,
                                                            row_count, slices)
-            backfill_timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+            backfill_timestamp = datetime.utcnow().strftime(
+                "%Y-%m-%d_%H-%M-%S")
             manifest_entries = []
             for count, chunk in enumerate(chunk_generator):
                 chunk_name = "_".join([backfill_timestamp, "chunk",
                                        str(count)])
                 complete_key_path = "".join([final_key_prefix,
                                              chunk_name, '.csv'])
-                self.write_csv_chunk_to_S3(chunk, bucket, complete_key_path)
+                print('Writing {} to S3...'.format(complete_key_path))
+                self.write_csv_chunk_to_s3(chunk, bucket, complete_key_path)
                 s3_path = (complete_key_path
                            if complete_key_path.startswith("/")
                            else "".join(["/", complete_key_path]))
                 manifest_entries.append({
                     'url': "".join(['s3://', bucket.name, s3_path]),
-                    'mandatory': 'true'
+                    'mandatory': True
                 })
 
             manifest = {'entries': manifest_entries}
             manifest_key_path = "".join([final_key_prefix,
                                          backfill_timestamp, ".manifest"])
-            from pprint import pprint;import pytest;pytest.set_trace()
             manifest_key = bucket.new_key(manifest_key_path)
+            print('Writing .manifest file to S3...')
             manifest_key.set_contents_from_string(json.dumps(manifest),
                                                   encrypt_key=True)
-
             complete_manifest_path = "".join(['s3://', bucket.name,
                                               manifest_key_path])
-            self.generate_copy_statement(table_name, complete_manifest_path)
-
+            copy_statement = self.generate_copy_statement(
+                table_name, complete_manifest_path)
+            print('Copying from S3 to Redshift...')
+            self.execute(copy_statement)
 
         finally:
             os.close(fp)
