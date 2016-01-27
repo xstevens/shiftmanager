@@ -6,10 +6,11 @@ Mixin classes for working with Postgres database exports
 
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
+
 from datetime import datetime
 import json
-from tempfile import mkstemp
 import os
+from tempfile import mkstemp
 
 import psycopg2
 
@@ -107,7 +108,7 @@ class PostgresMixin(S3Mixin):
         right_closed_boundary = left_closed_boundary[1:]
         final_boundary_index = len(right_closed_boundary) - 1
 
-        # We're going to allocate a large buffer for this- let's read as fast
+        # We're going to allocate a large buffer for this -- let's read as fast
         # as possible
         chunk_lines = []
         boundary_index = 0
@@ -125,7 +126,7 @@ class PostgresMixin(S3Mixin):
     def write_csv_chunk_to_s3(self, chunk, bucket, s3_key_path):
         """
         Given a string chunk that represents a piece of a CSV file, write
-        the chunk to a Boto s3 key
+        the chunk to a Boto S3 key.
 
         Parameters
         ----------
@@ -173,6 +174,9 @@ class PostgresMixin(S3Mixin):
             raise ValueError("This table_name does not exist in Redshift!")
 
         bucket = self.get_bucket(bucket_name)
+        # All keys written to S3 in the event cleanup is needed
+        all_s3_keys = []
+
         if not key_prefix.endswith("/"):
             final_key_prefix = "".join([key_prefix, "/"])
         else:
@@ -186,14 +190,18 @@ class PostgresMixin(S3Mixin):
                                                            row_count, slices)
             backfill_timestamp = datetime.utcnow().strftime(
                 "%Y-%m-%d_%H-%M-%S")
+
             manifest_entries = []
             for count, chunk in enumerate(chunk_generator):
                 chunk_name = "_".join([backfill_timestamp, "chunk",
                                        str(count)])
                 complete_key_path = "".join([final_key_prefix,
                                              chunk_name, '.csv'])
+
                 print('Writing {} to S3...'.format(complete_key_path))
                 self.write_csv_chunk_to_s3(chunk, bucket, complete_key_path)
+                all_s3_keys.append(complete_key_path)
+
                 s3_path = (complete_key_path
                            if complete_key_path.startswith("/")
                            else "".join(["/", complete_key_path]))
@@ -206,6 +214,8 @@ class PostgresMixin(S3Mixin):
             manifest_key_path = "".join([final_key_prefix,
                                          backfill_timestamp, ".manifest"])
             manifest_key = bucket.new_key(manifest_key_path)
+            all_s3_keys.append(manifest_key_path)
+
             print('Writing .manifest file to S3...')
             manifest_key.set_contents_from_string(json.dumps(manifest),
                                                   encrypt_key=True)
@@ -213,8 +223,16 @@ class PostgresMixin(S3Mixin):
                                               manifest_key_path])
             copy_statement = self.generate_copy_statement(
                 table_name, complete_manifest_path)
+
             print('Copying from S3 to Redshift...')
-            self.execute(copy_statement)
+            try:
+                self.execute(copy_statement)
+            except:
+                # Clean up S3 bucket in the event of any exception
+                print("Error writing to Redshift! Cleaning up S3...")
+                for key in all_s3_keys:
+                    bucket.delete_key(key)
+                raise
 
         finally:
             os.close(fp)
