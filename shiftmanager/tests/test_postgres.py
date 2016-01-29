@@ -22,9 +22,9 @@ def test_get_connection(postgres):
 
 
 @pytest.mark.postgrestest
-def test_copy_table_to_csv(postgres, tmpdir):
+def test_pg_copy_table_to_csv(postgres, tmpdir):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
-    row_count = postgres.copy_table_to_csv("test_table", csv_path)
+    row_count = postgres.pg_copy_table_to_csv("test_table", csv_path)
     assert os.path.isfile(csv_path) is True
     assert row_count == 300
 
@@ -36,7 +36,7 @@ def test_copy_table_to_csv(postgres, tmpdir):
 @pytest.mark.postgrestest
 def test_csv_chunk_generator(postgres, tmpdir):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
-    row_count = postgres.copy_table_to_csv("test_table", csv_path)
+    row_count = postgres.pg_copy_table_to_csv("test_table", csv_path)
 
     def test_row_ids(chunks):
         all_row_ids = []
@@ -57,14 +57,14 @@ def test_csv_chunk_generator(postgres, tmpdir):
 
 
 @pytest.mark.postgrestest
-def test_write_chunk_to_s3(postgres, tmpdir):
+def test_write_string_to_s3(postgres, tmpdir):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
-    row_count = postgres.copy_table_to_csv("test_table", csv_path)
+    row_count = postgres.pg_copy_table_to_csv("test_table", csv_path)
     csv_gen = postgres.get_csv_chunk_generator(csv_path, row_count, 30)
     chunks = [x for x in csv_gen]
 
     bucket = postgres.get_bucket('com.simple.postgres.mock')
-    postgres.write_csv_chunk_to_s3(chunks[0], bucket, 'tmp_chunk_1.csv')
+    postgres.write_string_to_s3(chunks[0], bucket, 'tmp_chunk_1.csv')
 
     assert 'tmp_chunk_1.csv' == [x for x in bucket.s3keys.keys()][0]
 
@@ -80,7 +80,8 @@ def test_copy_table_to_redshift(postgres, tmpdir):
     cur = postgres.connection.cursor()
     cur.return_rows = [("test_table",)]
 
-    postgres.copy_table_to_redshift("test_table", 'com.simple.postgres.mock',
+    postgres.copy_table_to_redshift("test_table", "test_table",
+                                    'com.simple.postgres.mock',
                                     "/tmp/backfill/", 10)
 
     bucket = postgres.get_bucket('com.simple.postgres.mock')
@@ -99,8 +100,6 @@ def test_copy_table_to_redshift(postgres, tmpdir):
     assert key_list == comparison_list
 
     copy_statement = cur.statements[-1]
-
-    from pprint import pprint;import pytest;pytest.set_trace()
 
     split_statement = [x.strip() for x in copy_statement.split("\n")]
 

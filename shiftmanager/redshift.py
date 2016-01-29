@@ -87,15 +87,15 @@ class Redshift(AdminMixin, ReflectionMixin, PostgresMixin):
             Values to bind to the batch, passed to `cursor.execute`
         """
         with self.connection as conn:
-            with conn.cursor() as curs:
-                curs.execute(batch, parameters)
+            with conn.cursor() as cur:
+                cur.execute(batch, parameters)
 
     def mogrify(self, batch, parameters=None, execute=False):
         if execute:
             self.execute(batch, parameters)
         with self.connection as conn:
-            with conn.cursor() as curs:
-                mogrified = curs.mogrify(batch, parameters)
+            with conn.cursor() as cur:
+                mogrified = cur.mogrify(batch, parameters)
         return mogrified.decode('utf-8')
 
     def table_exists(self, table_name):
@@ -112,14 +112,11 @@ class Redshift(AdminMixin, ReflectionMixin, PostgresMixin):
         boolean
         """
         with self.connection as conn:
-            with conn.cursor() as curs:
-                curs.execute("""select distinct(tablename)
-                                from pg_table_def
-                                where tablename = '{}';""".format(table_name))
+            with conn.cursor() as cur:
+                cur.execute("""select distinct(tablename)
+                               from pg_table_def
+                               where tablename = '{}';""".format(table_name))
 
-                table = [row for row in curs]
+                table = [row for row in cur]
 
-        if table and table[0][0] == table_name:
-            return True
-        else:
-            return False
+        return (table and table[0][0] == table_name)

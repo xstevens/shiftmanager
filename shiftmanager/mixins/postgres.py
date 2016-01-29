@@ -35,7 +35,7 @@ class PostgresMixin(S3Mixin):
                                 database=self.pg_database,
                                 password=self.pg_password)
 
-    def execute_and_commit_single_statement(self, statement):
+    def pg_execute_and_commit_single_statement(self, statement):
         """Execute single Postgres statement"""
         with self.pg_connection as conn:
             with conn.cursor() as cur:
@@ -54,12 +54,12 @@ class PostgresMixin(S3Mixin):
         self.pg_password = password
         return self.pg_connection
 
-    def copy_table_to_csv(self, table_name, csv_file_path):
+    def pg_copy_table_to_csv(self, table_name, csv_file_path):
         """
         Use Postgres to COPY the given table_name to a csv file at the given
         csv_path.
 
-        Additionally fetches the row count of the given `table_name` for
+        Additionally, fetch the row count of the given `table_name` for
         further processing.
 
         Parameters
@@ -77,19 +77,19 @@ class PostgresMixin(S3Mixin):
         copy = "COPY {table_name} TO '{csv_file_path}' DELIMITER ',' CSV;"
         formatted_statement = copy.format(table_name=table_name,
                                           csv_file_path=csv_file_path)
-        self.execute_and_commit_single_statement(formatted_statement)
+        self.pg_execute_and_commit_single_statement(formatted_statement)
 
         row_count_select = "SELECT COUNT(*) from {table_name};".format(
             table_name=table_name)
         with self.pg_connection as conn:
             with conn.cursor() as cur:
                 cur.execute(row_count_select)
-                row_count = [r for r in cur][0][0]
+                row_count = cur.fetchone()[0]
         return row_count
 
     def get_csv_chunk_generator(self, csv_file_path, row_count, chunks):
         """
-        Given the csv_file_path, return string chunks of the CSV with
+        Given the csv_file_path, yield string chunks of the CSV with
         `chunk_size` rows per chunk.
 
         Parameters
@@ -99,7 +99,7 @@ class PostgresMixin(S3Mixin):
         row_count: int
             Number of rows in the CSV
         chunks: int
-            Number of chunks to return
+            Number of chunks to yield
         """
 
         # Get chunk boundaries
@@ -113,34 +113,18 @@ class PostgresMixin(S3Mixin):
         chunk_lines = []
         boundary_index = 0
         boundary = right_closed_boundary[boundary_index]
-        with open(csv_file_path, "r", 1048576) as f:
-            for count, row in enumerate(f):
+        one_mebibyte = 1048576
+        with open(csv_file_path, "r", one_mebibyte) as f:
+            for line_number, row in enumerate(f):
                 chunk_lines.append(row)
-                if count == boundary:
+                if line_number == boundary:
                     if boundary_index != final_boundary_index:
                         boundary_index += 1
                         boundary = right_closed_boundary[boundary_index]
                     yield "".join(chunk_lines)
                     chunk_lines = []
 
-    def write_csv_chunk_to_s3(self, chunk, bucket, s3_key_path):
-        """
-        Given a string chunk that represents a piece of a CSV file, write
-        the chunk to a Boto S3 key.
-
-        Parameters
-        ----------
-        chunk: str
-            String blob representing a chunk of a larger CSV.
-        bucket: boto.s3.bucket.Bucket
-            The bucket we're writing to
-        s3_key_path: str
-            The key path to write the chunk to
-        """
-        boto_key = bucket.new_key(s3_key_path)
-        boto_key.set_contents_from_string(chunk, encrypt_key=True)
-
-    def generate_copy_statement(self, table_name, manifest_key_path):
+    def create_copy_statement(self, table_name, manifest_key_path):
         return """copy {table_name}
                   from '{manifest_key_path}'
                   credentials 'aws_access_key_id={key_id};aws_secret_access_key={secret_key}'
@@ -150,27 +134,29 @@ class PostgresMixin(S3Mixin):
                                  key_id=self.aws_access_key_id,
                                  secret_key=self.aws_secret_access_key)
 
-    def copy_table_to_redshift(self, table_name, bucket_name, key_prefix,
-                               slices):
+    def copy_table_to_redshift(self, pg_table_name, redshift_table_name,
+                               bucket_name, key_prefix, slices):
 
         """
         Write the contents of a Postgres table to Redshift.
-        The table will be written to the given bucket under the given
+        Write the table to the given bucket under the given
         key prefix.
 
         Parameters
         ----------
-        table_name: str
+        pg_table_name: str
             Table name to be written to CSV
+        redshift_table_name: str
+            Redshift table to which CSVs are to be written
         bucket_name: str
-            The name of the S3 bucket we're writing to
+            The name of the S3 bucket to be written to
         key_prefix: str
             The key path within the bucket to write to
         slices: int
             The number of slices in user's Redshift cluster, used to
             split CSV into chunks for parallel data loading
         """
-        if not self.table_exists(table_name):
+        if not self.table_exists(redshift_table_name):
             raise ValueError("This table_name does not exist in Redshift!")
 
         bucket = self.get_bucket(bucket_name)
@@ -183,9 +169,10 @@ class PostgresMixin(S3Mixin):
             final_key_prefix = key_prefix
 
         try:
+            # csv_temp_path = mkdtemp()
             fp, csv_temp_path = mkstemp()
-            print('Copying table {} to CSV...'.format(table_name))
-            row_count = self.copy_table_to_csv(table_name, csv_temp_path)
+            print('Copying table {} to CSV...'.format(pg_table_name))
+            row_count = self.pg_copy_table_to_csv(pg_table_name, csv_temp_path)
             chunk_generator = self.get_csv_chunk_generator(csv_temp_path,
                                                            row_count, slices)
             backfill_timestamp = datetime.utcnow().strftime(
@@ -199,7 +186,7 @@ class PostgresMixin(S3Mixin):
                                              chunk_name, '.csv'])
 
                 print('Writing {} to S3...'.format(complete_key_path))
-                self.write_csv_chunk_to_s3(chunk, bucket, complete_key_path)
+                self.write_string_to_s3(chunk, bucket, complete_key_path)
                 all_s3_keys.append(complete_key_path)
 
                 s3_path = (complete_key_path
@@ -221,8 +208,8 @@ class PostgresMixin(S3Mixin):
                                                   encrypt_key=True)
             complete_manifest_path = "".join(['s3://', bucket.name,
                                               manifest_key_path])
-            copy_statement = self.generate_copy_statement(
-                table_name, complete_manifest_path)
+            copy_statement = self.create_copy_statement(
+                redshift_table_name, complete_manifest_path)
 
             print('Copying from S3 to Redshift...')
             try:
