@@ -38,11 +38,7 @@ class S3Mixin(object):
     """The S3 interaction base class for `Redshift`."""
 
     def __init__(self, *args, **kwargs):
-
         self.s3_conn = None
-        self.aws_access_key_id = None
-        self.aws_secret_access_key = None
-        self.security_token = None
 
     def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key,
                             security_token=None):
