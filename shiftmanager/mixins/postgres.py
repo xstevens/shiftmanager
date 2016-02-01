@@ -136,7 +136,6 @@ class PostgresMixin(S3Mixin):
 
     def copy_table_to_redshift(self, pg_table_name, redshift_table_name,
                                bucket_name, key_prefix, slices):
-
         """
         Write the contents of a Postgres table to Redshift.
         Write the table to the given bucket under the given

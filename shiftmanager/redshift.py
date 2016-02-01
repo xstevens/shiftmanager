@@ -73,6 +73,8 @@ class Redshift(AdminMixin, ReflectionMixin, PostgresMixin):
 
         self._all_privileges = None
 
+        super(Redshift, self).__init__()
+
     def execute(self, batch, parameters=None):
         """
         Execute a batch of SQL statements using this instance's connection.
@@ -113,10 +115,10 @@ class Redshift(AdminMixin, ReflectionMixin, PostgresMixin):
         """
         with self.connection as conn:
             with conn.cursor() as cur:
-                cur.execute("""select distinct(tablename)
+                cur.execute("""select count (distinct tablename)
                                from pg_table_def
                                where tablename = '{}';""".format(table_name))
 
-                table = [row for row in cur]
+                table_count = cur.fetchone()[0]
 
-        return (table and table[0][0] == table_name)
+        return table_count == 1

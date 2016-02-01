@@ -78,7 +78,7 @@ def test_copy_table_to_redshift(postgres, tmpdir):
 
     # Set up mocking behavior
     cur = postgres.connection.cursor()
-    cur.return_rows = [("test_table",)]
+    cur.return_rows = [(1,)]
 
     postgres.copy_table_to_redshift("test_table", "test_table",
                                     'com.simple.postgres.mock',

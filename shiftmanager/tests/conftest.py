@@ -20,11 +20,22 @@ def mock_connection():
 
     class MockCursor(object):
 
-        statements = []
-        return_rows = []
+        def __init__(self, *args, **kwargs):
+
+            self.statements = []
+            self.return_rows = []
+            self.cursor_position = 0
 
         def execute(self, statement, *args, **kwargs):
             self.statements.append(statement)
+
+        def fetchone(self, *args, **kwargs):
+            if self.cursor_position > len(self.return_rows) - 1:
+                return None
+            else:
+                next_row = self.return_rows[self.cursor_position]
+                self.cursor_position += 1
+                return next_row
 
         def __enter__(self, *args, **kwargs):
             return self
