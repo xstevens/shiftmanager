@@ -140,5 +140,5 @@ class AdminMixin(object):
                 options.append("RESET %s" % param)
             else:
                 options.append("SET %s = %s" % (param, value))
-        statement += ', '.join(options)
+        statement += ' '.join(options)
         return self.mogrify(statement, data, execute)
