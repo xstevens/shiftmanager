@@ -59,7 +59,7 @@ class PostgresMixin(S3Mixin):
         Use Postgres to COPY the given table_name to a csv file at the given
         csv_path.
 
-        Additionally, fetch the row count of the given `table_name` for
+        Additionally, fetch the row count of the given table_name for
         further processing.
 
         Parameters
@@ -89,8 +89,8 @@ class PostgresMixin(S3Mixin):
 
     def get_csv_chunk_generator(self, csv_file_path, row_count, chunks):
         """
-        Given the csv_file_path, yield string chunks of the CSV with
-        `chunk_size` rows per chunk.
+        Given the csv_file_path and a row_count, yield chunks number
+        of string chunks
 
         Parameters
         ----------
@@ -100,6 +100,10 @@ class PostgresMixin(S3Mixin):
             Number of rows in the CSV
         chunks: int
             Number of chunks to yield
+
+        Yields
+        ------
+        str
         """
 
         # Get chunk boundaries
@@ -125,14 +129,33 @@ class PostgresMixin(S3Mixin):
                     chunk_lines = []
 
     def create_copy_statement(self, table_name, manifest_key_path):
+        """Create Redshift copy statement for given table_name and
+        the provided manifest_key_path.
+
+        Parameters
+        ----------
+        table_name: str
+            Redshift table name to COPY to
+        manifest_key_path: str
+            Complete S3 path to .manifest file
+
+        Returns
+        -------
+        str
+        """
+
+        key_id = 'aws_access_key_id={};'.format(self.aws_access_key_id)
+        secret_key_id = 'aws_secret_access_key={}'.format(
+            self.aws_secret_access_key)
+
         return """copy {table_name}
                   from '{manifest_key_path}'
-                  credentials 'aws_access_key_id={key_id};aws_secret_access_key={secret_key}'
+                  credentials '{key_id}{secret_key_id}'
                   manifest
                   csv;""".format(table_name=table_name,
                                  manifest_key_path=manifest_key_path,
-                                 key_id=self.aws_access_key_id,
-                                 secret_key=self.aws_secret_access_key)
+                                 key_id=key_id,
+                                 secret_key_id=secret_key_id)
 
     def copy_table_to_redshift(self, pg_table_name, redshift_table_name,
                                bucket_name, key_prefix, slices):

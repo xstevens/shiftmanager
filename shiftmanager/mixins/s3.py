@@ -15,7 +15,6 @@ from boto.s3.connection import S3Connection
 from boto.s3.connection import OrdinaryCallingFormat
 
 from shiftmanager import util, queries
-from shiftmanager.util import memoize
 
 
 def check_s3_connection(f):
@@ -72,11 +71,9 @@ class S3Mixin(object):
         # Amazon used to use the AWS_SECURITY_TOKEN, but is transitioning
         # to AWS_SESSION_TOKEN. boto2 still only supports the old version,
         # but we want to support both.
-        security_token = (
-                os.environ.get('AWS_SECURITY_TOKEN') or
-                os.environ.get('AWS_SESSION_TOKEN') or
-                self.security_token
-                )
+        security_token = (os.environ.get('AWS_SECURITY_TOKEN') or
+                          os.environ.get('AWS_SESSION_TOKEN') or
+                          self.security_token)
         if security_token:
             kwargs['security_token'] = security_token
 

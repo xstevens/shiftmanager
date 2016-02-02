@@ -7,10 +7,7 @@ Test Runner: PyTest
 """
 import os
 
-import psycopg2
 import pytest
-
-from shiftmanager import util
 
 
 @pytest.mark.postgrestest
@@ -18,7 +15,7 @@ def test_get_connection(postgres):
     cur = postgres.pg_connection.cursor()
     cur.execute("SELECT COUNT(*) FROM test_table;")
     count = [row for row in cur][0][0]
-    assert 300 == 300
+    assert 300 == count
 
 
 @pytest.mark.postgrestest
@@ -104,8 +101,13 @@ def test_copy_table_to_redshift(postgres, tmpdir):
     split_statement = [x.strip() for x in copy_statement.split("\n")]
 
     assert split_statement[0] == "copy test_table"
-    assert (split_statement[1].startswith("from 's3://com.simple.mock/tmp/backfill/") and
-            split_statement[1].endswith(".manifest'"))
-    assert split_statement[2] == "credentials 'aws_access_key_id=None;aws_secret_access_key=None'"
+
+    s3_start = "from 's3://com.simple.mock/tmp/backfill/"
+    s3_end = ".manifest'"
+    assert (split_statement[1].startswith(s3_start) and
+            split_statement[1].endswith(s3_end))
+
+    creds = "credentials 'aws_access_key_id=None;aws_secret_access_key=None'"
+    assert split_statement[2] == creds
     assert split_statement[3] == "manifest"
     assert split_statement[4] == "csv;"
