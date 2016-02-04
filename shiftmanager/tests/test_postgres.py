@@ -20,20 +20,34 @@ def test_get_connection(postgres):
 
 @pytest.mark.postgrestest
 def test_pg_copy_table_to_csv(postgres, tmpdir):
-    csv_path = os.path.join(str(tmpdir), "test_table.csv")
-    row_count = postgres.pg_copy_table_to_csv("test_table", csv_path)
-    assert os.path.isfile(csv_path) is True
-    assert row_count == 300
 
-    with open(csv_path, "r") as f:
-        rows = [row for row in f]
-        assert len(rows) == 300
+    csv_path = os.path.join(str(tmpdir), "test_table.csv")
+
+    def test_csv_copied(row_count):
+        assert os.path.isfile(csv_path) is True
+        assert row_count == 300
+
+        with open(csv_path, "r") as f:
+            rows = [row for row in f]
+            assert len(rows) == 300
+
+        os.remove(csv_path)
+
+    table_name_count = postgres.pg_copy_table_to_csv(
+        csv_path,
+        pg_table_name="test_table")
+    test_csv_copied(table_name_count)
+    select_count = postgres.pg_copy_table_to_csv(
+        csv_path,
+        pg_select_statement="select * from test_table")
+    test_csv_copied(select_count)
 
 
 @pytest.mark.postgrestest
 def test_csv_chunk_generator(postgres, tmpdir):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
-    row_count = postgres.pg_copy_table_to_csv("test_table", csv_path)
+    row_count = postgres.pg_copy_table_to_csv(
+        csv_path, pg_select_statement="select * from test_table")
 
     def test_row_ids(chunks):
         all_row_ids = []
@@ -44,7 +58,6 @@ def test_csv_chunk_generator(postgres, tmpdir):
         assert all_row_ids == [x for x in range(0, 300, 1)]
 
     for num_chunks in range(1, 30, 1):
-
         csv_gen = postgres.get_csv_chunk_generator(csv_path,
                                                    row_count, num_chunks)
         chunks = [x for x in csv_gen]
@@ -56,7 +69,8 @@ def test_csv_chunk_generator(postgres, tmpdir):
 @pytest.mark.postgrestest
 def test_write_string_to_s3(postgres, tmpdir):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
-    row_count = postgres.pg_copy_table_to_csv("test_table", csv_path)
+    row_count = postgres.pg_copy_table_to_csv(csv_path, "test_table")
+
     csv_gen = postgres.get_csv_chunk_generator(csv_path, row_count, 30)
     chunks = [x for x in csv_gen]
 
@@ -77,9 +91,8 @@ def test_copy_table_to_redshift(postgres, tmpdir):
     cur = postgres.connection.cursor()
     cur.return_rows = [(1,)]
 
-    postgres.copy_table_to_redshift("test_table", "test_table",
-                                    'com.simple.postgres.mock',
-                                    "/tmp/backfill/", 10)
+    postgres.copy_table_to_redshift("test_table", 'com.simple.postgres.mock',
+                                    "/tmp/backfill/", 10, "test_table")
 
     bucket = postgres.get_bucket('com.simple.postgres.mock')
 

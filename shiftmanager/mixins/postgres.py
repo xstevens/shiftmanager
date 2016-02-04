@@ -54,7 +54,8 @@ class PostgresMixin(S3Mixin):
         self.pg_password = password
         return self.pg_connection
 
-    def pg_copy_table_to_csv(self, table_name, csv_file_path):
+    def pg_copy_table_to_csv(self, csv_file_path, pg_table_name=None,
+                             pg_select_statement=None):
         """
         Use Postgres to COPY the given table_name to a csv file at the given
         csv_path.
@@ -64,27 +65,45 @@ class PostgresMixin(S3Mixin):
 
         Parameters
         ----------
-        table_name: str
-            Table name to be written to CSV
         csv_file_path: str
             File path for the CSV to be written to by Postgres
+        pg_table_name: str
+            Optional Postgres table name to be written to CSV if user
+            does not want to specify subset
+        pg_select_statement: str
+            Optional select statement if user wants to specify subset of table
+
 
         Returns
         -------
         row_count: int
         """
+        copy = "COPY {pg_table_or_select} TO '{csv_fp}' DELIMITER ',' CSV;"
 
-        copy = "COPY {table_name} TO '{csv_file_path}' DELIMITER ',' CSV;"
-        formatted_statement = copy.format(table_name=table_name,
-                                          csv_file_path=csv_file_path)
-        self.pg_execute_and_commit_single_statement(formatted_statement)
+        if pg_select_statement is None and pg_table_name is not None:
 
-        row_count_select = "SELECT COUNT(*) from {table_name};".format(
-            table_name=table_name)
+            formatted_statement = copy.format(
+                pg_table_or_select=pg_table_name,
+                csv_fp=csv_file_path)
+
+        elif pg_select_statement is not None and pg_table_name is None:
+
+            if not (pg_select_statement.startswith("(") and
+                    pg_select_statement.endswith(")")):
+                pg_select_statement = "(" + pg_select_statement + ")"
+
+            formatted_statement = copy.format(
+                pg_table_or_select=pg_select_statement,
+                csv_fp=csv_file_path)
+
+        else:
+            ValueError("Please enter a table name or a select statement.")
+
         with self.pg_connection as conn:
             with conn.cursor() as cur:
-                cur.execute(row_count_select)
-                row_count = cur.fetchone()[0]
+                cur.execute(formatted_statement)
+                row_count = cur.rowcount
+
         return row_count
 
     def get_csv_chunk_generator(self, csv_file_path, row_count, chunks):
@@ -128,7 +147,7 @@ class PostgresMixin(S3Mixin):
                     yield "".join(chunk_lines)
                     chunk_lines = []
 
-    def create_copy_statement(self, table_name, manifest_key_path):
+    def _create_copy_statement(self, table_name, manifest_key_path):
         """Create Redshift copy statement for given table_name and
         the provided manifest_key_path.
 
@@ -157,8 +176,9 @@ class PostgresMixin(S3Mixin):
                                  key_id=key_id,
                                  secret_key_id=secret_key_id)
 
-    def copy_table_to_redshift(self, pg_table_name, redshift_table_name,
-                               bucket_name, key_prefix, slices):
+    def copy_table_to_redshift(self, redshift_table_name,
+                               bucket_name, key_prefix, slices,
+                               pg_table_name=None, pg_select_statement=None):
         """
         Write the contents of a Postgres table to Redshift.
         Write the table to the given bucket under the given
@@ -166,8 +186,6 @@ class PostgresMixin(S3Mixin):
 
         Parameters
         ----------
-        pg_table_name: str
-            Table name to be written to CSV
         redshift_table_name: str
             Redshift table to which CSVs are to be written
         bucket_name: str
@@ -177,6 +195,11 @@ class PostgresMixin(S3Mixin):
         slices: int
             The number of slices in user's Redshift cluster, used to
             split CSV into chunks for parallel data loading
+        pg_table_name: str
+            Optional Postgres table name to be written to CSV if user
+            does not want to specify subset
+        pg_select_statement: str
+            Optional select statement if user wants to specify subset of table
         """
         if not self.table_exists(redshift_table_name):
             raise ValueError("This table_name does not exist in Redshift!")
@@ -191,10 +214,10 @@ class PostgresMixin(S3Mixin):
             final_key_prefix = key_prefix
 
         try:
-            # csv_temp_path = mkdtemp()
             fp, csv_temp_path = mkstemp()
-            print('Copying table {} to CSV...'.format(pg_table_name))
-            row_count = self.pg_copy_table_to_csv(pg_table_name, csv_temp_path)
+            row_count = self.pg_copy_table_to_csv(
+                csv_temp_path, pg_table_name=pg_table_name,
+                pg_select_statement=pg_select_statement)
             chunk_generator = self.get_csv_chunk_generator(csv_temp_path,
                                                            row_count, slices)
             backfill_timestamp = datetime.utcnow().strftime(
@@ -230,7 +253,7 @@ class PostgresMixin(S3Mixin):
                                                   encrypt_key=True)
             complete_manifest_path = "".join(['s3://', bucket.name,
                                               manifest_key_path])
-            copy_statement = self.create_copy_statement(
+            copy_statement = self._create_copy_statement(
                 redshift_table_name, complete_manifest_path)
 
             print('Copying from S3 to Redshift...')
