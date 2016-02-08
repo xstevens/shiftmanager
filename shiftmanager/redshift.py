@@ -10,11 +10,12 @@ import os
 
 import psycopg2
 
-from shiftmanager.mixins import (AdminMixin, ReflectionMixin, PostgresMixin)
+from shiftmanager.mixins import (AdminMixin, ReflectionMixin, PostgresMixin,
+                                 S3Mixin)
 from shiftmanager.memoized_property import memoized_property
 
 
-class Redshift(AdminMixin, ReflectionMixin, PostgresMixin):
+class Redshift(AdminMixin, ReflectionMixin, PostgresMixin, S3Mixin):
     """Interface to Redshift.
 
     This class will default to environment params for all arguments.

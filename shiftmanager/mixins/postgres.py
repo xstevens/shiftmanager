@@ -9,8 +9,7 @@ from __future__ import (absolute_import, division, print_function,
 
 from datetime import datetime
 import json
-import os
-from tempfile import mkstemp
+import tempfile
 
 import psycopg2
 
@@ -213,8 +212,8 @@ class PostgresMixin(S3Mixin):
         else:
             final_key_prefix = key_prefix
 
-        try:
-            fp, csv_temp_path = mkstemp()
+        with tempfile.NamedTemporaryFile() as ntf:
+            csv_temp_path = ntf.name
             row_count = self.pg_copy_table_to_csv(
                 csv_temp_path, pg_table_name=pg_table_name,
                 pg_select_statement=pg_select_statement)
@@ -265,7 +264,3 @@ class PostgresMixin(S3Mixin):
                 for key in all_s3_keys:
                     bucket.delete_key(key)
                 raise
-
-        finally:
-            os.close(fp)
-            os.remove(csv_temp_path)
