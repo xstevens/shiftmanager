@@ -74,7 +74,7 @@ class Redshift(AdminMixin, ReflectionMixin, PostgresMixin, S3Mixin):
 
         self._all_privileges = None
 
-        super(Redshift, self).__init__()
+        S3Mixin.__init__(self)
 
     def execute(self, batch, parameters=None):
         """
