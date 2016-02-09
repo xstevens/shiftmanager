@@ -15,7 +15,6 @@ from boto.s3.connection import S3Connection
 from boto.s3.connection import OrdinaryCallingFormat
 
 from shiftmanager import util, queries
-from shiftmanager.util import memoize
 
 
 def check_s3_connection(f):
@@ -36,6 +35,9 @@ def check_s3_connection(f):
 
 class S3Mixin(object):
     """The S3 interaction base class for `Redshift`."""
+
+    def __init__(self, *args, **kwargs):
+        self.s3_conn = None
 
     def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key,
                             security_token=None):
@@ -65,16 +67,16 @@ class S3Mixin(object):
         """
 
         args = []
-        kwargs = {
-            # Amazon used to use the AWS_SECURITY_TOKEN, but is transitioning
-            # to AWS_SESSION_TOKEN. boto2 still only supports the old version,
-            # but we want to support both.
-            "security_token": (
-                self.security_token or
-                os.environ.get('AWS_SECURITY_TOKEN') or
-                os.environ.get('AWS_SESSION_TOKEN')
-            ),
-        }
+        kwargs = {}
+        # Amazon used to use the AWS_SECURITY_TOKEN, but is transitioning
+        # to AWS_SESSION_TOKEN. boto2 still only supports the old version,
+        # but we want to support both.
+        security_token = (os.environ.get('AWS_SECURITY_TOKEN') or
+                          os.environ.get('AWS_SESSION_TOKEN') or
+                          self.security_token)
+        if security_token:
+            kwargs['security_token'] = security_token
+
         # Workaround https://github.com/boto/boto/issues/2836
         if ordinary_calling_fmt:
             kwargs["calling_format"] = OrdinaryCallingFormat()
@@ -84,9 +86,13 @@ class S3Mixin(object):
 
         # Cache the creds that this connection found
         provider = s3_conn.provider
-        self.set_aws_credentials(provider.access_key,
-                                 provider.secret_key,
-                                 provider.security_token)
+        if security_token:
+            self.set_aws_credentials(provider.access_key,
+                                     provider.secret_key,
+                                     provider.security_token)
+        else:
+            self.set_aws_credentials(provider.access_key,
+                                     provider.secret_key)
 
         return s3_conn
 
@@ -109,8 +115,24 @@ class S3Mixin(object):
             key.close()
         return key
 
+    def write_string_to_s3(self, chunk, bucket, s3_key_path):
+        """
+        Given a string chunk that represents a piece of a CSV file, write
+        the chunk to an S3 key.
+
+        Parameters
+        ----------
+        chunk: str
+            String blob representing a chunk of a larger CSV
+        bucket: boto.s3.bucket.Bucket
+            The bucket to be written to
+        s3_key_path: str
+            The key path to write the chunk to
+        """
+        boto_key = bucket.new_key(s3_key_path)
+        boto_key.set_contents_from_string(chunk, encrypt_key=True)
+
     @check_s3_connection
-    @memoize
     def get_bucket(self, bucket_name):
         """
         Get boto.s3.bucket. Caches existing buckets.

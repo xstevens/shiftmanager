@@ -10,11 +10,12 @@ import os
 
 import psycopg2
 
-from shiftmanager.mixins import AdminMixin, ReflectionMixin, S3Mixin
+from shiftmanager.mixins import (AdminMixin, ReflectionMixin, PostgresMixin,
+                                 S3Mixin)
 from shiftmanager.memoized_property import memoized_property
 
 
-class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
+class Redshift(AdminMixin, ReflectionMixin, PostgresMixin, S3Mixin):
     """Interface to Redshift.
 
     This class will default to environment params for all arguments.
@@ -64,7 +65,6 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
 
         self.set_aws_credentials(aws_access_key_id, aws_secret_access_key,
                                  security_token)
-        self.s3_conn = None
 
         self.user = user or os.environ.get('PGUSER')
         self.host = host or os.environ.get('PGHOST')
@@ -73,6 +73,8 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
         self.password = password or os.environ.get('PGPASSWORD')
 
         self._all_privileges = None
+
+        S3Mixin.__init__(self)
 
     def execute(self, batch, parameters=None):
         """
@@ -88,13 +90,36 @@ class Redshift(AdminMixin, ReflectionMixin, S3Mixin):
             Values to bind to the batch, passed to `cursor.execute`
         """
         with self.connection as conn:
-            with conn.cursor() as curs:
-                curs.execute(batch, parameters)
+            with conn.cursor() as cur:
+                cur.execute(batch, parameters)
 
     def mogrify(self, batch, parameters=None, execute=False):
         if execute:
             self.execute(batch, parameters)
         with self.connection as conn:
-            with conn.cursor() as curs:
-                mogrified = curs.mogrify(batch, parameters)
+            with conn.cursor() as cur:
+                mogrified = cur.mogrify(batch, parameters)
         return mogrified.decode('utf-8')
+
+    def table_exists(self, table_name):
+        """
+        Check Redshift for whether a table exists.
+
+        Parameters
+        ----------
+        table_name : str
+            The name of the table for whose existence we're checking
+
+        Returns
+        -------
+        boolean
+        """
+        with self.connection as conn:
+            with conn.cursor() as cur:
+                cur.execute("""select count (distinct tablename)
+                               from pg_table_def
+                               where tablename = '{}';""".format(table_name))
+
+                table_count = cur.fetchone()[0]
+
+        return table_count == 1

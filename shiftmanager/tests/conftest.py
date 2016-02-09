@@ -2,10 +2,12 @@
 """
 Test fixture definitions.
 
-These fixture are automatically imported for test files in this directory.
+These fixtures are automatically imported for test files in this directory.
 """
 
 import collections
+import random
+import uuid
 
 from mock import MagicMock, PropertyMock
 import pytest
@@ -15,8 +17,42 @@ import psycopg2
 @pytest.fixture
 def mock_connection():
     mock_connection = PropertyMock()
+
+    class MockCursor(object):
+
+        def __init__(self, *args, **kwargs):
+
+            self.statements = []
+            self.return_rows = []
+            self.cursor_position = 0
+
+        def execute(self, statement, *args, **kwargs):
+            self.statements.append(statement)
+
+        def fetchone(self, *args, **kwargs):
+            if self.cursor_position > len(self.return_rows) - 1:
+                return None
+            else:
+                next_row = self.return_rows[self.cursor_position]
+                self.cursor_position += 1
+                return next_row
+
+        def __enter__(self, *args, **kwargs):
+            return self
+
+        def __exit__(self, *args, **kwargs):
+            return
+
+        def __iter__(self):
+            for row in self.return_rows:
+                yield row
+
+    mock_cursor = MockCursor()
+    mock_connection_enter = MagicMock()
+    mock_connection_enter.cursor.return_value = mock_cursor
     mock_connection.return_value = mock_connection
-    mock_connection.__enter__ = MagicMock()
+    mock_connection.cursor.return_value = mock_cursor
+    mock_connection.__enter__ = lambda x: mock_connection_enter
     mock_connection.__exit__ = MagicMock()
     return mock_connection
 
@@ -86,3 +122,66 @@ def shift(monkeypatch, mock_connection, mock_s3):
                         security_token="security_token")
     shift.s3_conn = mock_s3
     return shift
+
+
+@pytest.fixture
+def postgres(monkeypatch, mock_connection, request, mock_s3):
+    """
+    Setup Postgres table with a few random columns of data for testing.
+    Tear down table at end of text fixture context.
+    """
+
+    import shiftmanager.mixins.postgres as sp
+    from shiftmanager.redshift import Redshift
+
+    monkeypatch.setattr('shiftmanager.Redshift.connection', mock_connection)
+
+    class PostgresRedshift(Redshift, sp.PostgresMixin):
+        """We need the Redshift methods, but don't want to require Postgres
+           for every single test. Thus, we create this dummy class"""
+
+        def __init__(self, *args, **kwargs):
+            super(PostgresRedshift, self).__init__(self, args, kwargs)
+
+    pg = PostgresRedshift()
+    pg.s3_conn = mock_s3
+    conn = pg.create_pg_connection(database="shiftmanager",
+                                   user="shiftmanager")
+    cur = conn.cursor()
+
+    # Just in case of an unclean exit
+    drop_if_exists_query = "DROP TABLE IF EXISTS test_table;"
+
+    cur.execute(drop_if_exists_query)
+
+    # Temp table for test runs; schema is arbitrary.
+    create_query = """CREATE TABLE test_table (
+                          row_count integer,
+                          uuid char(36),
+                          name varchar(255));"""
+
+    cur.execute(create_query)
+
+    # Fill table with a few hundred rows of random data
+    names = {"jill", "jane", "joe", "jim", "carol"}
+    insert_statement = ["INSERT INTO test_table VALUES"]
+    for i in range(0, 300, 1):
+        name = random.sample(names, 1)[0]
+        row_to_insert = " ({row_count}, '{uuid}', '{name}'),".format(
+            row_count=i, uuid=uuid.uuid4(), name=name)
+        insert_statement.append(row_to_insert)
+
+    joined_insert = "".join(insert_statement)
+    complete_insert = "{};".format(joined_insert[:-1])
+    cur.execute(complete_insert)
+    conn.commit()
+
+    def teardown_pg():
+        drop_query = "DROP TABLE test_table;"
+        cur.execute(drop_query)
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    request.addfinalizer(teardown_pg)
+    return pg

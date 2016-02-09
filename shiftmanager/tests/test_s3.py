@@ -131,7 +131,7 @@ def test_copy_to_json(shift, json_data, tmpdir):
                              slices=5)
 
     # Get our mock bucket
-    bukkit = shift.s3_conn.get_bucket("foo")
+    bukkit = shift.s3_conn.get_bucket("com.simple.mock")
     # 5 slices, one manifest, one jsonpaths
     check_key_calls(bukkit.s3keys, 5)
     mfest, jpaths = get_manifest_and_jsonpaths_keys(bukkit.s3keys)
@@ -162,7 +162,7 @@ def test_copy_to_json(shift, json_data, tmpdir):
                              slices=4,
                              clean_up_s3=False)
 
-    bukkit = shift.s3_conn.get_bucket("foo")
+    bukkit = shift.s3_conn.get_bucket("com.simple.mock")
     # 4 slices
     check_key_calls(bukkit.s3keys, 4)
 
@@ -180,6 +180,6 @@ def test_copy_to_json(shift, json_data, tmpdir):
                              slices=10,
                              local_path=dpath,
                              clean_up_local=False)
-    bukkit = shift.s3_conn.get_bucket("foo")
+    bukkit = shift.s3_conn.get_bucket("com.simple.mock")
     check_key_calls(bukkit.s3keys, 10)
     assert len(os.listdir(dpath)) == 10
