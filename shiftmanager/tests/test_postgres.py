@@ -44,10 +44,12 @@ def test_pg_copy_table_to_csv(postgres, tmpdir):
 
 
 @pytest.mark.postgrestest
-def test_csv_chunk_generator(postgres, tmpdir):
+@pytest.mark.parametrize("limit", [1, 5, 10, 29, 30, 100, 300])
+def test_csv_chunk_generator(postgres, tmpdir, limit):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
+    select_statement = "select * from test_table LIMIT %s" % limit
     row_count = postgres.pg_copy_table_to_csv(
-        csv_path, pg_select_statement="select * from test_table")
+        csv_path, pg_select_statement=select_statement)
 
     def test_row_ids(chunks):
         all_row_ids = []
@@ -55,14 +57,17 @@ def test_csv_chunk_generator(postgres, tmpdir):
             rows = chunk.split('\n')
             all_row_ids.extend([int(row.split(',')[0]) for row in rows[:-1]])
 
-        assert all_row_ids == [x for x in range(0, 300, 1)]
+        assert all_row_ids == [x for x in range(0, row_count, 1)]
 
     for num_chunks in range(1, 30, 1):
         csv_gen = postgres.get_csv_chunk_generator(csv_path,
                                                    row_count, num_chunks)
         chunks = [x for x in csv_gen]
 
-        assert len(chunks) == num_chunks
+        if row_count <= num_chunks:
+            assert len(chunks) == 1
+        else:
+            assert len(chunks) == num_chunks
         test_row_ids(chunks)
 
 
