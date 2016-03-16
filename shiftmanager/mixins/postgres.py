@@ -123,6 +123,11 @@ class PostgresMixin(S3Mixin):
         ------
         str
         """
+        # Yield only a single chunk if the number of rows is small.
+        if row_count <= chunks:
+            with open(csv_file_path, "r") as f:
+                yield f.read()
+            raise StopIteration
 
         # Get chunk boundaries
         left_closed_boundary = util.linspace(0, row_count, chunks)
