@@ -44,7 +44,7 @@ def test_pg_copy_table_to_csv(postgres, tmpdir):
 
 
 @pytest.mark.postgrestest
-@pytest.mark.parametrize("limit", [1, 5, 10, 29, 30, 100, 300])
+@pytest.mark.parametrize("limit", [1, 5, 13, 29, 30, 31, 97, 300])
 def test_csv_chunk_generator(postgres, tmpdir, limit):
     csv_path = os.path.join(str(tmpdir), "test_table.csv")
     select_statement = "select * from test_table LIMIT %s" % limit
