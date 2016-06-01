@@ -7,6 +7,7 @@ Mixin classes for working with Postgres database exports
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+import codecs
 from datetime import datetime
 import json
 import tempfile
@@ -125,7 +126,7 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         """
         # Yield only a single chunk if the number of rows is small.
         if row_count <= chunks:
-            with open(csv_file_path, "r") as f:
+            with codecs.open(csv_file_path, mode="r", encoding='utf-8') as f:
                 yield f.read()
             raise StopIteration
 
@@ -141,14 +142,14 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         boundary_index = 0
         boundary = right_closed_boundary[boundary_index]
         one_mebibyte = 1048576
-        with open(csv_file_path, "r", one_mebibyte) as f:
+        with codecs.open(csv_file_path, mode="r", encoding='utf-8', buffering=one_mebibyte) as f:
             for line_number, row in enumerate(f):
                 chunk_lines.append(row)
                 if line_number == boundary:
                     if boundary_index != final_boundary_index:
                         boundary_index += 1
                         boundary = right_closed_boundary[boundary_index]
-                    yield "".join(chunk_lines)
+                    yield u"".join(chunk_lines)
                     chunk_lines = []
 
     @property
