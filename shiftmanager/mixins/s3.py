@@ -38,6 +38,8 @@ class S3Mixin(object):
 
     def __init__(self, *args, **kwargs):
         self.s3_conn = None
+        self.aws_account_id = None
+        self.aws_role_name = None
 
     def set_aws_credentials(self, aws_access_key_id, aws_secret_access_key,
                             security_token=None):
@@ -55,6 +57,20 @@ class S3Mixin(object):
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
         self.security_token = security_token
+
+    def set_aws_role(self, aws_account_id, aws_role_name):
+        """
+        Set AWS IAM role. This rote will be assumed by the Redshift cluster
+        when reading from S3 during COPY statements. If not set, the access key
+        and secret from set_aws_credentials will be used.
+
+        Parameters
+        ----------
+        aws_account_id : str
+        aws_role_name : str
+        """
+        self.aws_account_id = aws_account_id
+        self.aws_role_name = aws_role_name
 
     def get_s3_connection(self, ordinary_calling_fmt=False):
         """

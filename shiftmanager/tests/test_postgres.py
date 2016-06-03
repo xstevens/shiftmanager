@@ -129,3 +129,19 @@ def test_copy_table_to_redshift(postgres, tmpdir):
     assert split_statement[2] == creds
     assert split_statement[3] == "manifest"
     assert split_statement[4] == "csv;"
+
+
+@pytest.mark.postgrestest
+def test_aws_role_copy(postgres, tmpdir):
+    cur = postgres.connection.cursor()
+    cur.return_rows = [(1,)]
+
+    postgres.set_aws_role('000000', 'TestRole')
+    postgres.copy_table_to_redshift('test_table', 'com.simple.postgres.mock',
+                                    '/tmp/backfill/', 10, 'test_table')
+
+    copy_statement = cur.statements[-1]
+    split_statement = [x.strip() for x in copy_statement.split("\n")]
+
+    creds = "credentials 'aws_iam_role=arn:aws:iam::000000:role/TestRole'"
+    assert split_statement[2] == creds

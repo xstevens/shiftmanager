@@ -43,6 +43,12 @@ def test_connection_with_security_token(shift):
     assert shift.security_token == 'my_token'
 
 
+def test_connection_with_role(shift):
+    shift.set_aws_role('my_account_id', 'my_role_name')
+    assert shift.aws_account_id == 'my_account_id'
+    assert shift.aws_role_name == 'my_role_name'
+
+
 def test_jsonpaths(shift):
 
     test_dict_1 = {"one": 1, "two": {"three": 3}}
