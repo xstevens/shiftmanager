@@ -13,11 +13,7 @@ on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 
 # Hide nonlocal image warnings.
-_standard_warn_node = sphinx.environment.BuildEnvironment.warn_node
-def _warn_node(self, msg, node):
-    if not msg.startswith('nonlocal image URI found:'):
-        _standard_warn_node(self, msg, node)
-sphinx.environment.BuildEnvironment.warn_node = _warn_node
+suppress_warnings = ['image.nonlocal_uri']
 
 
 # If extensions (or modules to document with autodoc) are in another directory,
