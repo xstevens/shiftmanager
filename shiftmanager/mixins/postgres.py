@@ -163,6 +163,9 @@ class PostgresMixin(S3Mixin):
             secret_key_id = 'aws_secret_access_key={}'.format(
                 self.aws_secret_access_key)
             template = '{key_id}{secret_key_id}'
+            if self.security_token:
+                template += ";token={security_token}".format(
+                    security_token=self.security_token)
             return template.format(key_id=key_id,
                                    secret_key_id=secret_key_id)
 
