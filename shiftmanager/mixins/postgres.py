@@ -151,6 +151,24 @@ class PostgresMixin(S3Mixin):
                     yield "".join(chunk_lines)
                     chunk_lines = []
 
+    @property
+    def aws_credentials(self):
+        if self.aws_account_id and self.aws_role_name:
+            template = ('aws_iam_role=arn:aws:iam::'
+                        '{aws_account_id}:role/{role_name}')
+            return template.format(aws_account_id=self.aws_account_id,
+                                   role_name=self.aws_role_name)
+        else:
+            key_id = 'aws_access_key_id={};'.format(self.aws_access_key_id)
+            secret_key_id = 'aws_secret_access_key={}'.format(
+                self.aws_secret_access_key)
+            template = '{key_id}{secret_key_id}'
+            if self.security_token:
+                template += ";token={security_token}".format(
+                    security_token=self.security_token)
+            return template.format(key_id=key_id,
+                                   secret_key_id=secret_key_id)
+
     def _create_copy_statement(self, table_name, manifest_key_path):
         """Create Redshift copy statement for given table_name and
         the provided manifest_key_path.
@@ -167,18 +185,13 @@ class PostgresMixin(S3Mixin):
         str
         """
 
-        key_id = 'aws_access_key_id={};'.format(self.aws_access_key_id)
-        secret_key_id = 'aws_secret_access_key={}'.format(
-            self.aws_secret_access_key)
-
         return """copy {table_name}
                   from '{manifest_key_path}'
-                  credentials '{key_id}{secret_key_id}'
+                  credentials '{aws_credentials}'
                   manifest
                   csv;""".format(table_name=table_name,
                                  manifest_key_path=manifest_key_path,
-                                 key_id=key_id,
-                                 secret_key_id=secret_key_id)
+                                 aws_credentials=self.aws_credentials)
 
     def copy_table_to_redshift(self, redshift_table_name,
                                bucket_name, key_prefix, slices,
