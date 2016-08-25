@@ -195,7 +195,8 @@ class PostgresMixin(S3Mixin):
 
     def copy_table_to_redshift(self, redshift_table_name,
                                bucket_name, key_prefix, slices,
-                               pg_table_name=None, pg_select_statement=None):
+                               pg_table_name=None, pg_select_statement=None,
+                               temp_file_dir=None):
         """
         Write the contents of a Postgres table to Redshift.
         Write the table to the given bucket under the given
@@ -217,6 +218,8 @@ class PostgresMixin(S3Mixin):
             does not want to specify subset
         pg_select_statement: str
             Optional select statement if user wants to specify subset of table
+        temp_file_dir: str
+            Optional Specify location of temporary files
         """
         if not self.table_exists(redshift_table_name):
             raise ValueError("This table_name does not exist in Redshift!")
@@ -230,7 +233,7 @@ class PostgresMixin(S3Mixin):
         else:
             final_key_prefix = key_prefix
 
-        with tempfile.NamedTemporaryFile() as ntf:
+        with tempfile.NamedTemporaryFile(dir=temp_file_dir) as ntf:
             csv_temp_path = ntf.name
             row_count = self.pg_copy_table_to_csv(
                 csv_temp_path, pg_table_name=pg_table_name,
