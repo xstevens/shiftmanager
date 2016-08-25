@@ -27,12 +27,9 @@ class PostgresMixin(S3Mixin):
 
         Instantiation is delayed until the object is first used.
         """
-        print("Connecting to %s..." % self.pg_host)
-        return psycopg2.connect(user=self.pg_user,
-                                host=self.pg_host,
-                                port=self.pg_port,
-                                database=self.pg_database,
-                                password=self.pg_password)
+
+        print("Connecting to %s..." % self.pg_args['host'])
+        return psycopg2.connect(**self.pg_args)
 
     def pg_execute_and_commit_single_statement(self, statement):
         """Execute single Postgres statement"""
@@ -40,17 +37,20 @@ class PostgresMixin(S3Mixin):
             with conn.cursor() as cur:
                 cur.execute(statement)
 
-    def create_pg_connection(self, database=None, user=None, password=None,
-                             host='localhost', port=5432):
+    def create_pg_connection(self, **kwargs):
         """
         Create a `psycopg2.connect` connection to Redshift.
+
+        See https://www.postgresql.org/docs/current/static/\
+libpq-connect.html#LIBPQ-PARAMKEYWORDS
+        for supported parameters.
         """
 
-        self.pg_user = user
-        self.pg_host = host
-        self.pg_port = port
-        self.pg_database = database
-        self.pg_password = password
+        # Use 'localhost' as default host rather than unix socket
+        if 'host' not in kwargs:
+            kwargs['host'] = 'localhost'
+
+        self.pg_args = kwargs
         return self.pg_connection
 
     def pg_copy_table_to_csv(self, csv_file_path, pg_table_name=None,
