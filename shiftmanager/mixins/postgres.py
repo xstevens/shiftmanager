@@ -196,7 +196,7 @@ class PostgresMixin(S3Mixin):
     def copy_table_to_redshift(self, redshift_table_name,
                                bucket_name, key_prefix, slices,
                                pg_table_name=None, pg_select_statement=None,
-                               temp_file_dir=None):
+                               temp_file_dir=None, cleanup_s3=True):
         """
         Write the contents of a Postgres table to Redshift.
         Write the table to the given bucket under the given
@@ -220,6 +220,8 @@ class PostgresMixin(S3Mixin):
             Optional select statement if user wants to specify subset of table
         temp_file_dir: str
             Optional Specify location of temporary files
+        cleanup_s3: bool
+            Optional Clean up S3 location on failure. Defaults to True.
         """
         if not self.table_exists(redshift_table_name):
             raise ValueError("This table_name does not exist in Redshift!")
@@ -281,7 +283,8 @@ class PostgresMixin(S3Mixin):
                 self.execute(copy_statement)
             except:
                 # Clean up S3 bucket in the event of any exception
-                print("Error writing to Redshift! Cleaning up S3...")
-                for key in all_s3_keys:
-                    bucket.delete_key(key)
+                if cleanup_s3:
+                    print("Error writing to Redshift! Cleaning up S3...")
+                    for key in all_s3_keys:
+                        bucket.delete_key(key)
                 raise
