@@ -142,7 +142,8 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         boundary_index = 0
         boundary = right_closed_boundary[boundary_index]
         one_mebibyte = 1048576
-        with codecs.open(csv_file_path, mode="r", encoding='utf-8', buffering=one_mebibyte) as f:
+        with codecs.open(csv_file_path, mode="r", encoding='utf-8',
+                         buffering=one_mebibyte) as f:
             for line_number, row in enumerate(f):
                 chunk_lines.append(row)
                 if line_number == boundary:
