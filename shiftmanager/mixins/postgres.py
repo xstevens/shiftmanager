@@ -7,6 +7,7 @@ Mixin classes for working with Postgres database exports
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+import codecs
 from datetime import datetime
 import json
 import tempfile
@@ -27,12 +28,9 @@ class PostgresMixin(S3Mixin):
 
         Instantiation is delayed until the object is first used.
         """
-        print("Connecting to %s..." % self.pg_host)
-        return psycopg2.connect(user=self.pg_user,
-                                host=self.pg_host,
-                                port=self.pg_port,
-                                database=self.pg_database,
-                                password=self.pg_password)
+
+        print("Connecting to %s..." % self.pg_args['host'])
+        return psycopg2.connect(**self.pg_args)
 
     def pg_execute_and_commit_single_statement(self, statement):
         """Execute single Postgres statement"""
@@ -40,17 +38,20 @@ class PostgresMixin(S3Mixin):
             with conn.cursor() as cur:
                 cur.execute(statement)
 
-    def create_pg_connection(self, database=None, user=None, password=None,
-                             host='localhost', port=5432):
+    def create_pg_connection(self, **kwargs):
         """
         Create a `psycopg2.connect` connection to Redshift.
+
+        See https://www.postgresql.org/docs/current/static/\
+libpq-connect.html#LIBPQ-PARAMKEYWORDS
+        for supported parameters.
         """
 
-        self.pg_user = user
-        self.pg_host = host
-        self.pg_port = port
-        self.pg_database = database
-        self.pg_password = password
+        # Use 'localhost' as default host rather than unix socket
+        if 'host' not in kwargs:
+            kwargs['host'] = 'localhost'
+
+        self.pg_args = kwargs
         return self.pg_connection
 
     def pg_copy_table_to_csv(self, csv_file_path, pg_table_name=None,
@@ -125,7 +126,7 @@ class PostgresMixin(S3Mixin):
         """
         # Yield only a single chunk if the number of rows is small.
         if row_count <= chunks:
-            with open(csv_file_path, "r") as f:
+            with codecs.open(csv_file_path, mode="r", encoding='utf-8') as f:
                 yield f.read()
             raise StopIteration
 
@@ -141,14 +142,15 @@ class PostgresMixin(S3Mixin):
         boundary_index = 0
         boundary = right_closed_boundary[boundary_index]
         one_mebibyte = 1048576
-        with open(csv_file_path, "r", one_mebibyte) as f:
+        with codecs.open(csv_file_path, mode="r", encoding='utf-8',
+                         buffering=one_mebibyte) as f:
             for line_number, row in enumerate(f):
                 chunk_lines.append(row)
                 if line_number == boundary:
                     if boundary_index != final_boundary_index:
                         boundary_index += 1
                         boundary = right_closed_boundary[boundary_index]
-                    yield "".join(chunk_lines)
+                    yield u"".join(chunk_lines)
                     chunk_lines = []
 
     @property
@@ -195,7 +197,8 @@ class PostgresMixin(S3Mixin):
 
     def copy_table_to_redshift(self, redshift_table_name,
                                bucket_name, key_prefix, slices,
-                               pg_table_name=None, pg_select_statement=None):
+                               pg_table_name=None, pg_select_statement=None,
+                               temp_file_dir=None, cleanup_s3=True):
         """
         Write the contents of a Postgres table to Redshift.
         Write the table to the given bucket under the given
@@ -217,6 +220,10 @@ class PostgresMixin(S3Mixin):
             does not want to specify subset
         pg_select_statement: str
             Optional select statement if user wants to specify subset of table
+        temp_file_dir: str
+            Optional Specify location of temporary files
+        cleanup_s3: bool
+            Optional Clean up S3 location on failure. Defaults to True.
         """
         if not self.table_exists(redshift_table_name):
             raise ValueError("This table_name does not exist in Redshift!")
@@ -230,7 +237,7 @@ class PostgresMixin(S3Mixin):
         else:
             final_key_prefix = key_prefix
 
-        with tempfile.NamedTemporaryFile() as ntf:
+        with tempfile.NamedTemporaryFile(dir=temp_file_dir) as ntf:
             csv_temp_path = ntf.name
             row_count = self.pg_copy_table_to_csv(
                 csv_temp_path, pg_table_name=pg_table_name,
@@ -278,7 +285,8 @@ class PostgresMixin(S3Mixin):
                 self.execute(copy_statement)
             except:
                 # Clean up S3 bucket in the event of any exception
-                print("Error writing to Redshift! Cleaning up S3...")
-                for key in all_s3_keys:
-                    bucket.delete_key(key)
+                if cleanup_s3:
+                    print("Error writing to Redshift! Cleaning up S3...")
+                    for key in all_s3_keys:
+                        bucket.delete_key(key)
                 raise
