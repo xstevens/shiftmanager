@@ -78,7 +78,12 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         -------
         row_count: int
         """
-        copy = "COPY {pg_table_or_select} TO '{csv_fp}' DELIMITER ',' CSV;"
+        copy = ' '.join([
+            "COPY {pg_table_or_select}",
+            "TO '{csv_fp}'",
+            "DELIMITER ','",
+            "FORCE QUOTE *",
+            "CSV;"])
 
         if pg_select_statement is None and pg_table_name is not None:
 
