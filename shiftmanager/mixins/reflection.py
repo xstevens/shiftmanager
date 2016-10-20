@@ -177,10 +177,10 @@ class ReflectionMixin(object):
         use_cache : `bool`
             Use cached results for the privilege query, if available
         execute : `bool`
-            Execute the command in addition to returning it.
+            Execute the command in addition to returning it
         kwargs :
-            Additional keyword arguments will be passed unchanged to the
-            `get_view_definition` method.
+            Additional keyword arguments will be passed unchanged to
+            :meth:`~sqlalchemy_redshift.dialect.RedshiftDialect.get_view_definition`
         """
         view = self._pass_or_reflect(view, schema)
         definition = self.engine.dialect.get_view_definition(
