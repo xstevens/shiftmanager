@@ -142,6 +142,11 @@ To retain only the most recently ingested row for each unique id, call::
             deduplicate_partition_by='message_id',
             deduplicate_order_by='when_recorded DESC')
 
+When using ``deduplicate_partition_by``, only the first row returned for
+any given value of the partitioning columns is retained. It's strongly
+suggested that you supply a value for ``deduplicate_order_by`` to determine
+how that initial row is chosen.
+
 `deep_copy` can also be used to migrate an existing table to a new structure,
 providing a convenient way to alter distkeys, sortkeys, and column encodings.
 Additional keyword arguments will be passed to the `reflected_table` method,

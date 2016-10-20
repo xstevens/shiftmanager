@@ -238,7 +238,9 @@ class ReflectionMixin(object):
         deduplicate_partition_by: `str` or `None`
             A string giving a list of columns like 'col1, col2' to be passed
             to 'ROW_NUMBER() OVER (PARTITION BY {columns})' so that only the
-            first row for a given set of values will be retained
+            first row for a given set of values will be retained;
+            it's strongly suggested that you also set
+            *deduplicate_order_by* so that results are deterministic
         deduplicate_order_by: `str` or `None`
             A string like 'col3 DESC, col4 ASC' to be passed to the
             'PARTITION BY' clause to determine ordering for deduplication;
