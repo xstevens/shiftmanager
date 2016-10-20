@@ -149,10 +149,14 @@ class ReflectionMixin(object):
             encodings = dict((r.Column, r.Encoding) for r in result)
             for col in table.columns:
                 col.info['encode'] = encodings[col.key]
-        statements = [str(CreateTable(table).compile(self.engine))]
+        batch = str(CreateTable(table).compile(self.engine)).strip()
         if copy_privileges:
-            statements += self._privilege_statements(table, use_cache)
-        return ';\n'.join(statements)
+            batch += ';\n'
+            priv_statements = self._privilege_statements(table, use_cache)
+            if priv_statements:
+                batch += '\n'
+                batch += ';\n'.join(priv_statements).strip()
+        return batch
 
     def view_definition(self, view, schema=None,
                         copy_privileges=True, use_cache=True,
@@ -176,23 +180,28 @@ class ReflectionMixin(object):
             Execute the command in addition to returning it.
         kwargs :
             Additional keyword arguments will be passed unchanged to the
-            `reflected_table` method.
+            `get_view_definition` method.
         """
         view = self._pass_or_reflect(view, schema)
         definition = self.engine.dialect.get_view_definition(
-            self.engine, name=view.name, schema=view.schema, **kwargs)
+            self.engine, view.name, view.schema, **kwargs)
         create_statement = str(CreateView(view, definition)
                                .compile(self.engine))
-        statements = []
+        batch = create_statement.strip()
         if copy_privileges:
-            statements += self._privilege_statements(view, use_cache)
-        batch = create_statement + ';\n'.join(statements)
+            priv_statements = self._privilege_statements(view, use_cache)
+            if priv_statements:
+                batch += ';\n\n'
+                batch += ';\n'.join(priv_statements)
         return self.mogrify(batch, None, execute)
 
     def deep_copy(self, table, schema=None,
                   copy_privileges=True, use_cache=True,
                   cascade=False, distinct=False,
                   analyze_compression=False,
+                  analyze=True,
+                  deduplicate_partition_by=None,
+                  deduplicate_order_by=None,
                   execute=False,
                   **kwargs):
         """Return a SQL str defining a deep copy of *table*.
@@ -218,10 +227,23 @@ class ReflectionMixin(object):
         cascade : `bool`
             Drop any dependent views when dropping the source table
         distinct : `bool`
-            Deduplicate the table by adding DISTINCT to the SELECT statement
+            Deduplicate the table by adding DISTINCT to the SELECT statement;
+            also see *deduplicate_partition_by* for more control
         analyze_compression : `bool`
             Update the column compression encodings based on results of an
             ANALYZE COMPRESSION statement on the table.
+        analyze: `bool`
+            Add an 'ANALYZE table' command at the end of the batch to update
+            statistics, since this is not done automatically for INSERTs
+        deduplicate_partition_by: `str` or `None`
+            A string giving a list of columns like 'col1, col2' to be passed
+            to 'ROW_NUMBER() OVER (PARTITION BY {columns})' so that only the
+            first row for a given set of values will be retained
+        deduplicate_order_by: `str` or `None`
+            A string like 'col3 DESC, col4 ASC' to be passed to the
+            'PARTITION BY' clause to determine ordering for deduplication;
+            the first row in sort order will be the one retained;
+            will be ignored if *deduplicate_partition_by* is not also set
         execute : `bool`
             Execute the command in addition to returning it.
         kwargs :
@@ -232,27 +254,41 @@ class ReflectionMixin(object):
         table_name = self.preparer.format_table(table)
         outgoing_name = table_name + '$outgoing'
         outgoing_name_simple = table.name + '$outgoing'
-        table_definition = self.table_definition(table, None,
-                                                 copy_privileges, use_cache,
-                                                 analyze_compression)
+        table_definition = '\n' + self.table_definition(
+            table, None, copy_privileges, use_cache, analyze_compression)
         insert_statement = "\nINSERT INTO {table_name} SELECT "
         if distinct:
             insert_statement += "DISTINCT "
-        insert_statement += "* from {outgoing_name}"
-        drop_statement = "DROP TABLE {outgoing_name}"
+        if deduplicate_partition_by:
+            col_str = ',\n\t'.join('"%s"' % colname for colname in
+                                   table.columns.keys())
+            inner = "\tSELECT *, ROW_NUMBER() \n"
+            inner += "\tOVER (PARTITION BY {deduplicate_partition_by}"
+            if deduplicate_order_by:
+                inner += " ORDER BY {deduplicate_order_by}"
+            inner += ")\n\tFROM {outgoing_name}\n"
+            insert_statement += ("\n\t" + col_str + "\nFROM (\n" +
+                                 inner + ") WHERE row_number = 1")
+        else:
+            insert_statement += "* FROM {outgoing_name}"
+        drop_statement = "\nDROP TABLE {outgoing_name}"
         if cascade:
             drop_statement += " CASCADE"
-        statements = (
+        statements = [
             "LOCK TABLE {table_name}",
             "ALTER TABLE {table_name} RENAME TO {outgoing_name_simple}",
             table_definition,
             insert_statement,
             drop_statement,
-        )
+        ]
+        if analyze:
+            statements.append("ANALYZE {table_name}")
         batch = ';\n'.join(statements).format(
             table_name=table_name, outgoing_name=outgoing_name,
             outgoing_name_simple=outgoing_name_simple,
-        )
+            deduplicate_partition_by=deduplicate_partition_by,
+            deduplicate_order_by=deduplicate_order_by,
+        ) + ';'
         return self.mogrify(batch, None, execute)
 
     def _cache_privileges(self):
