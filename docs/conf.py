@@ -298,7 +298,8 @@ texinfo_documents = [
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/', None),
-    'sqlalchemy': ('https://sqlalchemy.readthedocs.org/en/latest/', None),
-    'psycopg2': ('http://initd.org/psycopg/docs/', None)
+    'python': ('https://docs.python.org/3/', None),
+    'sqlalchemy': ('https://sqlalchemy.readthedocs.io/en/latest/', None),
+    'sqlalchemyredshift': ('https://sqlalchemy-redshift.readthedocs.io/en/latest/', None),
+    'psycopg2': ('http://initd.org/psycopg/docs/', None),
 }

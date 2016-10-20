@@ -132,15 +132,28 @@ behind the scenes to recreate the relevant DDL::
 
 To remove duplicate records while recreating the table,
 pass in the ``distinct=True`` keyword argument.
+If you have rows you consider duplicates despite some difference in their
+values, you can use the ``deduplicate_partition_by`` option.
+For example, say that rows include a ``message_id`` column that should be
+unique, but also a ``when_recorded`` column set when the record is ingested.
+To retain only the most recently ingested row for each unique id, call::
+
+  deep_copy('my_table',
+            deduplicate_partition_by='message_id',
+            deduplicate_order_by='when_recorded DESC NULLS LAST')
+
+When using ``deduplicate_partition_by``, only the first row returned for
+any given value of the partitioning columns is retained. It's strongly
+suggested that you supply a value for ``deduplicate_order_by`` to determine
+how that initial row is chosen.
 
 `deep_copy` can also be used to migrate an existing table to a new structure,
 providing a convenient way to alter distkeys, sortkeys, and column encodings.
-Use the `reflected_table` method to generate a modified
-`sqlalchemy.schema.Table` object, and pass that in rather than a table name::
+Additional keyword arguments will be passed to the `reflected_table` method,
+altering the reflected `sqlalchemy.schema.Table`::
 
   >>> kwargs = dict(redshift_distkey='email_address', redshift_sortkey=('email_address', 'id'))
-  >>> table = redshift.reflected_table('my_table', schema='my_schema', **kwargs)
-  >>> batch = redshift.deep_copy(table)
+  >>> batch = redshift.deep_copy('my_table', schema='my_schema', **kwarg)
   >>> print(batch)
   LOCK TABLE my_schema.my_table;
   ALTER TABLE my_schema.my_table RENAME TO my_table$outgoing;
@@ -148,14 +161,13 @@ Use the `reflected_table` method to generate a modified
   CREATE TABLE my_schema.my_table (
           id CHAR(36) ENCODE lzo,
           email_address VARCHAR(256) ENCODE raw
-  ) DISTSTYLE KEY DISTKEY (email_address) SORTKEY (email_address, id)
+  ) DISTSTYLE KEY DISTKEY (email_address) SORTKEY (email_address, id);
 
-  ;
   ALTER TABLE my_schema.my_table OWNER TO chad;
-  GRANT ALL ON my_schema.my_table TO clarissa
+  GRANT ALL ON my_schema.my_table TO clarissa;
 
   INSERT INTO my_schema.my_table SELECT * from my_schema.my_table$outgoing;
-  DROP TABLE my_schema.my_table$outgoing
+  DROP TABLE my_schema.my_table$outgoing;
 
 If you pass ``analyze_compress=True`` to `deep_copy`, compression encodings
 will be updated in the resultant table based on results of running

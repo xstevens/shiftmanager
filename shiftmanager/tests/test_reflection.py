@@ -16,6 +16,14 @@ def table():
                     sa.schema.Column("col1", sa.INTEGER))
 
 
+@pytest.fixture
+def complex_table():
+    return sa.Table("my_complex_table", sa.MetaData(),
+                    sa.schema.Column("col1", sa.INTEGER),
+                    sa.schema.Column("col2", sa.INTEGER),
+                    sa.schema.Column("col3", sa.INTEGER))
+
+
 def cleaned(statement):
     text = str(statement)
     stripped_lines = [line.strip() for line in text.split('\n')]
@@ -34,31 +42,65 @@ class SqlTextMatcher(object):
         return cleaned(self.text) == cleaned(text)
 
 
-def test_dedupe(shift, table):
-    statement = shift.deep_copy(table, distinct=True, copy_privileges=False)
+def test_deep_copy_distinct(shift, table):
+    statement = shift.deep_copy(table, distinct=True,
+                                copy_privileges=False, analyze=False)
     expected = """
     LOCK TABLE my_table;
     ALTER TABLE my_table RENAME TO my_table$outgoing;
     CREATE TABLE my_table (
     col1 INTEGER
-    )
-    ;
-    INSERT INTO my_table SELECT DISTINCT * from my_table$outgoing;
-    DROP TABLE my_table$outgoing
+    );
+
+    INSERT INTO my_table SELECT DISTINCT * FROM my_table$outgoing;
+
+    DROP TABLE my_table$outgoing;
     """
     assert(cleaned(statement) == cleaned(expected))
 
 
 def test_cascade(shift, table):
-    statement = shift.deep_copy(table, cascade=True, copy_privileges=False)
+    statement = shift.deep_copy(table, cascade=True,
+                                copy_privileges=False, analyze=False)
     expected = """
     LOCK TABLE my_table;
     ALTER TABLE my_table RENAME TO my_table$outgoing;
     CREATE TABLE my_table (
     col1 INTEGER
-    )
-    ;
-    INSERT INTO my_table SELECT * from my_table$outgoing;
-    DROP TABLE my_table$outgoing CASCADE
+    );
+
+    INSERT INTO my_table SELECT * FROM my_table$outgoing;
+
+    DROP TABLE my_table$outgoing CASCADE;
+    """
+    assert(cleaned(statement) == cleaned(expected))
+
+
+def test_deduplicate(shift, complex_table):
+    statement = shift.deep_copy(complex_table,
+                                deduplicate_partition_by="col1, col2",
+                                deduplicate_order_by="col3 DESC",
+                                copy_privileges=False, analyze=False)
+    expected = """
+    LOCK TABLE my_complex_table;
+    ALTER TABLE my_complex_table RENAME TO my_complex_table$outgoing;
+
+    CREATE TABLE my_complex_table (
+    col1 INTEGER,
+    col2 INTEGER,
+    col3 INTEGER
+    );
+
+    INSERT INTO my_complex_table SELECT
+    "col1",
+    "col2",
+    "col3"
+    FROM (
+    SELECT *, ROW_NUMBER()
+    OVER (PARTITION BY col1, col2 ORDER BY col3 DESC)
+    FROM my_complex_table$outgoing
+    ) WHERE row_number = 1;
+
+    DROP TABLE my_complex_table$outgoing;
     """
     assert(cleaned(statement) == cleaned(expected))
