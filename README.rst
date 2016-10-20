@@ -140,7 +140,7 @@ To retain only the most recently ingested row for each unique id, call::
 
   deep_copy('my_table',
             deduplicate_partition_by='message_id',
-            deduplicate_order_by='when_recorded DESC')
+            deduplicate_order_by='when_recorded DESC NULLS LAST')
 
 When using ``deduplicate_partition_by``, only the first row returned for
 any given value of the partitioning columns is retained. It's strongly

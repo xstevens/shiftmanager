@@ -242,9 +242,9 @@ class ReflectionMixin(object):
             it's strongly suggested that you also set
             *deduplicate_order_by* so that results are deterministic
         deduplicate_order_by: `str` or `None`
-            A string like 'col3 DESC, col4 ASC' to be passed to the
-            'PARTITION BY' clause to determine ordering for deduplication;
-            the first row in sort order will be the one retained;
+            A string like 'col3 DESC NULLS LAST, col4 ASC NULLS LAST' to be
+            passed to the 'PARTITION BY' clause for deduplication, with
+            the first row in sort order being the one retained;
             will be ignored if *deduplicate_partition_by* is not also set
         execute : `bool`
             Execute the command in addition to returning it.
