@@ -82,7 +82,7 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         """
         copy = ' '.join([
             "COPY {pg_table_or_select}",
-            "TO '{csv_fp}'",
+            "TO PROGRAM 'gzip > {csv_fp}'",
             "DELIMITER ','",
             "FORCE QUOTE *",
             "CSV;"])
@@ -113,52 +113,31 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
 
         return row_count
 
-    def get_csv_chunk_generator(self, csv_file_path, row_count, chunks):
+    def get_csv_chunk_generator(self, csv_file_path, max_bytes_per_chunk=33554432):
         """
-        Given the csv_file_path and a row_count, yield chunks number
-        of string chunks
+        Given the csv_file_path and an optional max_bytes_per_chunk, yield string chunks
+        of roughly that size (default: 32MB)
 
         Parameters
         ----------
         csv_file_path: str
             File path for the CSV written by Postgres
-        row_count: int
-            Number of rows in the CSV
-        chunks: int
-            Number of chunks to yield
+        max_bytes_per_chunk: int
+            The approximate maximum number of bytes per chunk
 
         Yields
         ------
         str
-        """
-        # Yield only a single chunk if the number of rows is small.
-        if row_count <= chunks:
-            with codecs.open(csv_file_path, mode="r", encoding='utf-8') as f:
-                yield f.read()
-            raise StopIteration
-
-        # Get chunk boundaries
-        left_closed_boundary = util.linspace(0, row_count, chunks)
-        left_closed_boundary.append(row_count - 1)
-        right_closed_boundary = left_closed_boundary[1:]
-        final_boundary_index = len(right_closed_boundary) - 1
-
-        # We're going to allocate a large buffer for this -- let's read as fast
-        # as possible
-        chunk_lines = []
-        boundary_index = 0
-        boundary = right_closed_boundary[boundary_index]
-        one_mebibyte = 1048576
-        with codecs.open(csv_file_path, mode="r", encoding='utf-8',
-                         buffering=one_mebibyte) as f:
-            for line_number, row in enumerate(f):
-                chunk_lines.append(row)
-                if line_number == boundary:
-                    if boundary_index != final_boundary_index:
-                        boundary_index += 1
-                        boundary = right_closed_boundary[boundary_index]
-                    yield u"".join(chunk_lines)
-                    chunk_lines = []
+        """       
+        reader = codecs.getreader('utf-8')
+        with gzip.open(csv_file_path, 'rb') as zf:
+            r = reader(zf)
+            while True:
+                chunk_lines = r.readlines(max_bytes_per_chunk)
+                if not chunk_lines:
+                    break
+                yield u"".join(chunk_lines)
+        raise StopIteration
 
     @property
     def aws_credentials(self):
@@ -244,13 +223,12 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         else:
             final_key_prefix = key_prefix
 
-        with tempfile.NamedTemporaryFile(dir=temp_file_dir) as ntf:
+        with tempfile.NamedTemporaryFile(dir=temp_file_dir, suffix=".gz") as ntf:
             csv_temp_path = ntf.name
             row_count = self.pg_copy_table_to_csv(
                 csv_temp_path, pg_table_name=pg_table_name,
                 pg_select_statement=pg_select_statement)
-            chunk_generator = self.get_csv_chunk_generator(csv_temp_path,
-                                                           row_count, slices)
+            chunk_generator = self.get_csv_chunk_generator(csv_temp_path)
             backfill_timestamp = datetime.utcnow().strftime(
                 "%Y-%m-%d_%H-%M-%S")
 
