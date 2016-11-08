@@ -113,31 +113,34 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
 
         return row_count
 
-    def get_csv_chunk_generator(self, csv_file_path, max_bytes_per_chunk=33554432):
+    def get_csv_chunk_generator(self, csv_file_path,
+                                chunk_max_bytes=33554432):
         """
-        Given the csv_file_path and an optional max_bytes_per_chunk, yield string chunks
-        of roughly that size (default: 32MB)
+        Given the csv_file_path and an optional max_bytes_per_chunk, yield
+        string chunks of roughly that size (default: 32MB)
 
         Parameters
         ----------
         csv_file_path: str
             File path for the CSV written by Postgres
-        max_bytes_per_chunk: int
+        chunk_max_bytes: int
             The approximate maximum number of bytes per chunk
 
         Yields
         ------
         str
-        """       
+        """
         reader = codecs.getreader('utf-8')
         with gzip.open(csv_file_path, 'rb') as zf:
             r = reader(zf)
-            while True:
-                chunk_lines = r.readlines(max_bytes_per_chunk)
-                if not chunk_lines:
-                    break
-                yield u"".join(chunk_lines)
-        raise StopIteration
+            chunk_count = 1
+            chunk_lines = []
+            for line in r:
+                chunk_lines.append(line)
+                if zf.tell() > (chunk_max_bytes * chunk_count):
+                    yield u"".join(chunk_lines)
+                    chunk_lines = []
+                    chunk_count += 1
 
     @property
     def aws_credentials(self):
@@ -184,7 +187,8 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
     def copy_table_to_redshift(self, redshift_table_name,
                                bucket_name, key_prefix, slices,
                                pg_table_name=None, pg_select_statement=None,
-                               temp_file_dir=None, cleanup_s3=True, manifest_max_keys=32):
+                               temp_file_dir=None, cleanup_s3=True,
+                               manifest_max_keys=32):
         """
         Write the contents of a Postgres table to Redshift.
         Write the table to the given bucket under the given
@@ -225,7 +229,7 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
 
         with tempfile.NamedTemporaryFile(dir=temp_file_dir, suffix=".gz") as ntf:
             csv_temp_path = ntf.name
-            row_count = self.pg_copy_table_to_csv(
+            self.pg_copy_table_to_csv(
                 csv_temp_path, pg_table_name=pg_table_name,
                 pg_select_statement=pg_select_statement)
             chunk_generator = self.get_csv_chunk_generator(csv_temp_path)
@@ -234,16 +238,22 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
 
             manifest_entries = []
             for count, chunk in enumerate(chunk_generator):
-                chunk_name = "_".join([backfill_timestamp, "chunk", str(count)])
+                chunk_name = "_".join([backfill_timestamp, "chunk",
+                                       str(count)])
                 # write the chunk gzip compressed to the local filesystem
-                compressed_chunk_path = os.path.join(temp_file_dir, chunk_name + '.gz')
-                with gzip.open(compressed_chunk_path, 'wb') as compressed_chunk_f:
-                    compressed_chunk_f.write(chunk)
+                compressed_chunk_path = os.path.join(temp_file_dir,
+                                                     chunk_name + '.gz')
+                writer = codecs.getwriter('utf-8')
+                with gzip.open(compressed_chunk_path, 'wb') as ccf:
+                    w = writer(ccf)
+                    w.write(chunk)
                 complete_key_path = "".join([final_key_prefix,
-                                                chunk_name, '.csv.gz'])
+                                             chunk_name, '.csv.gz'])
                 # upload compressed chunk file to S3
-                print('Writing {} to S3 {} ...'.format(compressed_chunk_path, complete_key_path))
-                self.write_file_to_s3(compressed_chunk_path, bucket, complete_key_path)
+                print('Writing {} to S3 {} ...'.format(compressed_chunk_path,
+                                                       complete_key_path))
+                self.write_file_to_s3(compressed_chunk_path, bucket,
+                                      complete_key_path)
                 # remove chunk file after uploaded to s3
                 os.remove(compressed_chunk_path)
 
@@ -261,19 +271,22 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
             num_entries = len(manifest_entries)
             while (start_idx < num_entries):
                 end_idx = min(num_entries, start_idx + manifest_max_keys)
-                print("Using manifest_entries: start=%d, end=%d" % (start_idx, end_idx))
+                print("Using manifest_entries: start=%d, end=%d" %
+                      (start_idx, end_idx))
                 entries = manifest_entries[start_idx:end_idx]
                 manifest = {'entries': entries}
-                manifest_key_path = "".join([final_key_prefix, backfill_timestamp, 
-                                             str(start_idx), "-", str(end_idx), ".manifest"])
+                manifest_key_path = "".join([final_key_prefix,
+                                             backfill_timestamp,
+                                             str(start_idx), "-", str(end_idx),
+                                             ".manifest"])
                 manifest_key = bucket.new_key(manifest_key_path)
                 all_s3_keys.append(manifest_key_path)
 
                 print('Writing .manifest file to S3...')
                 manifest_key.set_contents_from_string(json.dumps(manifest),
-                                                    encrypt_key=True)
+                                                      encrypt_key=True)
                 complete_manifest_path = "".join(['s3://', bucket.name,
-                                                manifest_key_path])
+                                                  manifest_key_path])
                 copy_statement = self._create_copy_statement(
                     redshift_table_name, complete_manifest_path)
 
