@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 Mixin classes for working with Postgres database exports
 """
@@ -12,13 +10,11 @@ from datetime import datetime
 import gzip
 import json
 import os
-import tempfile
 
 import psycopg2
 
 from shiftmanager.memoized_property import memoized_property
 from shiftmanager.mixins.s3 import S3Mixin
-from shiftmanager import util
 
 
 class PostgresMixin(S3Mixin):
@@ -114,10 +110,10 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         return row_count
 
     def get_csv_chunk_generator(self, csv_file_path,
-                                chunk_max_bytes=33554432):
+                                chunk_max_bytes=134217728):
         """
         Given the csv_file_path and an optional max_bytes_per_chunk, yield
-        string chunks of roughly that size (default: 32MB)
+        string chunks of roughly that size (default: 128MB)
 
         Parameters
         ----------
@@ -130,12 +126,11 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         ------
         str
         """
-        reader = codecs.getreader('utf-8')
         with gzip.open(csv_file_path, 'rb') as zf:
-            r = reader(zf)
+            reader = codecs.getreader('utf-8')
             chunk_count = 1
             chunk_lines = []
-            for line in r:
+            for line in reader(zf):
                 chunk_lines.append(line)
                 if zf.tell() > (chunk_max_bytes * chunk_count):
                     yield u"".join(chunk_lines)
@@ -188,7 +183,7 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
                                bucket_name, key_prefix, slices,
                                pg_table_name=None, pg_select_statement=None,
                                temp_file_dir=None, cleanup_s3=True,
-                               manifest_max_keys=32):
+                               manifest_max_keys=64):
         """
         Write the contents of a Postgres table to Redshift.
         Write the table to the given bucket under the given
@@ -227,77 +222,81 @@ libpq-connect.html#LIBPQ-PARAMKEYWORDS
         else:
             final_key_prefix = key_prefix
 
-        with tempfile.NamedTemporaryFile(dir=temp_file_dir, suffix=".gz") as ntf:
-            csv_temp_path = ntf.name
+        csv_temp_path = os.path.join(temp_file_dir, redshift_table_name + ".gz")
+        use_existing = False
+        if os.path.exists(csv_temp_path):
+            answer = input("Would you like to use the existing database dump file ([y]/n)? ")
+            use_existing = answer == 'n' or answer == 'no'
+
+        if not use_existing:
             self.pg_copy_table_to_csv(
                 csv_temp_path, pg_table_name=pg_table_name,
                 pg_select_statement=pg_select_statement)
-            chunk_generator = self.get_csv_chunk_generator(csv_temp_path)
-            backfill_timestamp = datetime.utcnow().strftime(
-                "%Y-%m-%d_%H-%M-%S")
+        chunk_generator = self.get_csv_chunk_generator(csv_temp_path)
+        backfill_timestamp = datetime.utcnow().strftime(
+            "%Y-%m-%d_%H-%M-%S")
 
-            manifest_entries = []
-            for count, chunk in enumerate(chunk_generator):
-                chunk_name = "_".join([backfill_timestamp, "chunk",
-                                       str(count)])
-                # write the chunk gzip compressed to the local filesystem
-                compressed_chunk_path = os.path.join(temp_file_dir,
-                                                     chunk_name + '.gz')
-                writer = codecs.getwriter('utf-8')
-                with gzip.open(compressed_chunk_path, 'wb') as ccf:
-                    w = writer(ccf)
-                    w.write(chunk)
-                complete_key_path = "".join([final_key_prefix,
-                                             chunk_name, '.csv.gz'])
-                # upload compressed chunk file to S3
-                print('Writing {} to S3 {} ...'.format(compressed_chunk_path,
-                                                       complete_key_path))
-                self.write_file_to_s3(compressed_chunk_path, bucket,
-                                      complete_key_path)
-                # remove chunk file after uploaded to s3
-                os.remove(compressed_chunk_path)
+        manifest_entries = []
+        for count, chunk in enumerate(chunk_generator):
+            chunk_name = "_".join([backfill_timestamp, "chunk",
+                                   str(count)])
+            # write the chunk gzip compressed to the local filesystem
+            compressed_chunk_path = os.path.join(temp_file_dir,
+                                                 chunk_name + '.gz')
+            with gzip.open(compressed_chunk_path, 'wt', encoding='utf-8') as ccf:
+                ccf.write(chunk)
+            complete_key_path = "".join([final_key_prefix,
+                                         chunk_name, '.csv.gz'])
+            # upload compressed chunk file to S3
+            print('Writing {} to S3 {} ...'.format(compressed_chunk_path,
+                                                   complete_key_path))
+            self.write_file_to_s3(compressed_chunk_path, bucket,
+                                  complete_key_path)
+            # remove chunk file after uploaded to s3
+            os.remove(compressed_chunk_path)
 
-                all_s3_keys.append(complete_key_path)
+            all_s3_keys.append(complete_key_path)
 
-                s3_path = (complete_key_path
-                           if complete_key_path.startswith("/")
-                           else "".join(["/", complete_key_path]))
-                manifest_entries.append({
-                    'url': "".join(['s3://', bucket.name, s3_path]),
-                    'mandatory': True
-                })
+            s3_path = (complete_key_path
+                       if complete_key_path.startswith("/")
+                       else "".join(["/", complete_key_path]))
+            manifest_entries.append({
+                'url': "".join(['s3://', bucket.name, s3_path]),
+                'mandatory': True
+            })
 
-            start_idx = 0
-            num_entries = len(manifest_entries)
-            while (start_idx < num_entries):
-                end_idx = min(num_entries, start_idx + manifest_max_keys)
-                print("Using manifest_entries: start=%d, end=%d" %
-                      (start_idx, end_idx))
-                entries = manifest_entries[start_idx:end_idx]
-                manifest = {'entries': entries}
-                manifest_key_path = "".join([final_key_prefix,
-                                             backfill_timestamp,
-                                             str(start_idx), "-", str(end_idx),
-                                             ".manifest"])
-                manifest_key = bucket.new_key(manifest_key_path)
-                all_s3_keys.append(manifest_key_path)
+        start_idx = 0
+        num_entries = len(manifest_entries)
+        while (start_idx < num_entries):
+            end_idx = min(num_entries, start_idx + manifest_max_keys)
+            print("Using manifest_entries: start=%d, end=%d" % 
+                  (start_idx, end_idx))
+            entries = manifest_entries[start_idx:end_idx]
+            manifest = {'entries': entries}
+            manifest_key_path = "".join([final_key_prefix,
+                                         backfill_timestamp,
+                                         str(start_idx), "-", str(end_idx),
+                                         ".manifest"])
+            manifest_key = bucket.new_key(manifest_key_path)
+            all_s3_keys.append(manifest_key_path)
 
-                print('Writing .manifest file to S3...')
-                manifest_key.set_contents_from_string(json.dumps(manifest),
-                                                      encrypt_key=True)
-                complete_manifest_path = "".join(['s3://', bucket.name,
-                                                  manifest_key_path])
-                copy_statement = self._create_copy_statement(
-                    redshift_table_name, complete_manifest_path)
+            print('Writing .manifest file to S3...')
+            manifest_key.set_contents_from_string(json.dumps(manifest),
+                                                  encrypt_key=True)
+            complete_manifest_path = "".join(['s3://', bucket.name,
+                                              manifest_key_path])
+            copy_statement = self._create_copy_statement(
+                redshift_table_name, complete_manifest_path)
 
-                print('Copying from S3 to Redshift...')
-                try:
-                    self.execute(copy_statement)
-                    start_idx = end_idx
-                except:
-                    # Clean up S3 bucket in the event of any exception
-                    if cleanup_s3:
-                        print("Error writing to Redshift! Cleaning up S3...")
-                        for key in all_s3_keys:
-                            bucket.delete_key(key)
-                    raise
+            print('Copying from S3 to Redshift...')
+            try:
+                self.execute(copy_statement)
+                start_idx = end_idx
+            except:
+                # Clean up S3 bucket in the event of any exception
+                if cleanup_s3:
+                    print("Error writing to Redshift! Cleaning up S3...")
+                    for key in all_s3_keys:
+                        bucket.delete_key(key)
+                raise
+        os.remove(csv_temp_path)
